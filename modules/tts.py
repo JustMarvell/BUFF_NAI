@@ -1,7 +1,13 @@
+import sys
+import os
 import subprocess
 import queue
 import threading
 from config import PIPER_MODEL
+
+PIPER_BIN = os.path.join(os.path.dirname(sys.executable), "piper")
+if not os.path.exists(PIPER_BIN):
+    PIPER_BIN = "piper"  # fall back to PATH lookup
 
 _play_process = None
 _sentence_queue = queue.Queue()
@@ -11,7 +17,7 @@ _worker_started = False
 def _speak_one(text, filename="output.wav", timeout=30):
     global _play_process
     result = subprocess.run(
-        ["piper", "--model", PIPER_MODEL, "--output_file", filename],
+        [PIPER_BIN, "--model", PIPER_MODEL, "--output_file", filename],
         input=text, text=True, capture_output=True, timeout=timeout
     )
     if result.returncode != 0:
@@ -28,8 +34,8 @@ def _worker():
         if not _stop_flag.is_set():
             try:
                 _speak_one(text)
-            except (RuntimeError, subprocess.TimeoutExpired):
-                pass
+            except (RuntimeError, subprocess.TimeoutExpired, FileNotFoundError) as e:
+                print(f"TTS error: {e}")
         _sentence_queue.task_done()
 
 def start_worker():
