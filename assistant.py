@@ -1,7 +1,7 @@
 import tkinter as tk
 import threading
 from modules.stt import start_recording, stop_recording, transcribe
-from modules.llm import ask
+from modules.llm import ask, reset_history
 from modules.tts import speak
 
 def on_press(event):
@@ -17,7 +17,14 @@ def on_release(event):
 def process_audio():
     filename = stop_recording()
     if not filename:
-        status_label.config(text="No audio captured, try again.")
+        status_label.config(text=f"AI: {reply}")
+        talk_button.config(bg="#3498db", text="Speaking...")
+
+        try:
+            speak(reply)
+        except RuntimeError as e:
+            status_label.config(text=f"AI: {reply}\n(voice error: {e})")
+
         reset_button()
         return
 
@@ -47,16 +54,24 @@ def process_audio():
 
 def reset_button():
     talk_button.config(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
+    
+def on_new_conversation():
+    reset_history()
+    status_label.config(text="New conversation started.")
+
 
 root = tk.Tk()
 root.title("BUFF_NAI")
-root.geometry("300x150")
+root.geometry("300x200")
 
 talk_button = tk.Button(root, text="Hold to Talk", font=("Arial", 14), width=20, height=3)
 DEFAULT_BG = talk_button.cget("bg")
 talk_button.bind("<ButtonPress-1>", on_press)
 talk_button.bind("<ButtonRelease-1>", on_release)
 talk_button.pack(pady=20)
+
+new_conv_button = tk.Button(root, text="New Conversation", font=("Arial", 10), command=on_new_conversation)
+new_conv_button.pack(pady=5)
 
 status_label = tk.Label(root, text="Hold the button to talk", wraplength=280)
 status_label.pack()

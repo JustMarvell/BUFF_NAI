@@ -18,3 +18,7 @@ def ask(prompt, timeout=30):
     reply = resp.json()["message"]["content"]
     history.append({"role": "assistant", "content": reply})
     return reply
+
+def reset_history():
+    global history
+    history = [{"role": "system", "content": SYSTEM_PROMPT}]
