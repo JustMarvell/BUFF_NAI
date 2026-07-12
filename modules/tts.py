@@ -1,27 +1,61 @@
 import subprocess
+import queue
+import threading
 from config import PIPER_MODEL
 
 _play_process = None
+_sentence_queue = queue.Queue()
+_stop_flag = threading.Event()
+_worker_started = False
+
+def _speak_one(text, filename="output.wav", timeout=30):
+    global _play_process
+    result = subprocess.run(
+        ["piper", "--model", PIPER_MODEL, "--output_file", filename],
+        input=text, text=True, capture_output=True, timeout=timeout
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Piper failed: {result.stderr.strip()}")
+    if _stop_flag.is_set():
+        return
+    _play_process = subprocess.Popen(["aplay", filename])
+    _play_process.wait(timeout=timeout)
+    _play_process = None
+
+def _worker():
+    while True:
+        text = _sentence_queue.get()
+        if not _stop_flag.is_set():
+            try:
+                _speak_one(text)
+            except (RuntimeError, subprocess.TimeoutExpired):
+                pass
+        _sentence_queue.task_done()
+
+def start_worker():
+    """Call once at app startup — starts the persistent playback thread."""
+    global _worker_started
+    if not _worker_started:
+        threading.Thread(target=_worker, daemon=True).start()
+        _worker_started = True
+
+def begin_session():
+    """Call before queuing a new reply's sentences."""
+    _stop_flag.clear()
+
+def queue_sentence(text):
+    _sentence_queue.put(text)
+
+def wait_until_done():
+    _sentence_queue.join()
 
 def speak(text, filename="output.wav", timeout=30):
-    global _play_process
-    try:
-        result = subprocess.run(
-            ["piper", "--model", PIPER_MODEL, "--output_file", filename],
-            input=text, text=True, capture_output=True, timeout=timeout
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Piper failed: {result.stderr.strip()}")
-        _play_process = subprocess.Popen(["aplay", filename])
-        _play_process.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("TTS timed out")
-    except FileNotFoundError:
-        raise RuntimeError("Piper or aplay not found — check installation")
-    finally:
-        _play_process = None
+    """Non-streaming single-shot speak, kept for compatibility."""
+    _speak_one(text, filename, timeout)
 
 def stop_speaking():
-    global _play_process
+    _stop_flag.set()
+    with _sentence_queue.mutex:
+        _sentence_queue.queue.clear()
     if _play_process and _play_process.poll() is None:
         _play_process.terminate()

@@ -1,8 +1,8 @@
 import tkinter as tk
 import threading
 from modules.stt import start_recording, stop_recording, transcribe
-from modules.llm import ask, reset_history
-from modules.tts import speak, stop_speaking
+from modules.llm import ask_stream, reset_history
+from modules.tts import speak, stop_speaking, start_worker, begin_session, queue_sentence, wait_until_done, stop_speaking
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
 
 def on_press(event):
@@ -18,14 +18,7 @@ def on_release(event):
 def process_audio():
     filename = stop_recording()
     if not filename:
-        status_label.config(text=f"AI: {reply}")
-        talk_button.config(bg="#3498db", text="Speaking...")
-
-        try:
-            speak(reply)
-        except RuntimeError as e:
-            status_label.config(text=f"AI: {reply}\n(voice error: {e})")
-
+        status_label.config(text="Nothing recorded, try again.")
         reset_button()
         return
 
@@ -36,21 +29,23 @@ def process_audio():
         return
 
     status_label.config(text=f"You said: {text}")
+    talk_button.config(bg="#3498db", text="Speaking...")
+    begin_session()
+
+    reply_parts = []
+    def on_sentence(sentence):
+        reply_parts.append(sentence)
+        queue_sentence(sentence)
+        status_label.config(text=f"AI: {' '.join(reply_parts)}")
 
     try:
-        reply = ask(text)
+        ask_stream(text, on_sentence)
     except ConnectionError as e:
         status_label.config(text=f"{e}\nIs Ollama running?")
         reset_button()
         return
 
-    status_label.config(text=f"AI: {reply}")
-
-    try:
-        speak(reply)
-    except RuntimeError as e:
-        status_label.config(text=f"AI: {reply}\n(voice error: {e})")
-
+    wait_until_done()
     reset_button()
 
 def reset_button():
@@ -99,5 +94,7 @@ tk.Button(ollama_frame, text="Restart Ollama", font=("Arial", 9),
 
 status_label = tk.Label(root, text="Hold the button to talk", wraplength=280)
 status_label.pack()
+
+start_worker()
 
 root.mainloop()
