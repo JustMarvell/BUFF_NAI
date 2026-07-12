@@ -2,11 +2,23 @@
 
 A fully local, offline AI Voice TTS.
 
-## Current Stage
+### Stages (project-level roadmap)
+Stage 1 — Push-to-talk - [v] Complete
+- The core loop: hold a button, speak, get transcribed, get a reply from a local LLM, hear it spoken back. Fully local, no cloud.
 
-**Stage 1: Push-to-talk MVP — in progress**
+Stage 2 — Hands-free / wake-word mode — Not started
+- Always-listening mode instead of holding a button. Requires voice activity detection (VAD) so the assistant knows when you're speaking without a manual trigger.
 
-The core pipeline (mic → speech-to-text → LLM → text-to-speech) is working end-to-end with a fixed-duration recording window. Not yet implemented: true push-to-talk (hold-to-record), hands-free/wake-word mode, and the optional sprite/avatar layer.
+Stage 3 — Sprite/avatar layer — Not started, optional/exploratory
+- A visual character (PNG or sprite) that reacts to the conversation — e.g., changes expression based on sentiment or conversation state.
+
+### Phases (the build steps that made up Stage 1)
+| Phase | What it was | Status | 
+| --- | --- | --- |
+| Phase 1 | Local LLM running via Ollama, basic terminal chat test | Done | 
+| Phase 2 | Speech-to-text via whisper.cpp, mic recording test | Done | 
+| Phase 3 | Text-to-speech via Piper, voice output test | Done |
+| Phase 4 | Merged mic → LLM → voice into one working loop, converted to a GUI push-to-talk button (after the Wayland/pynput/evdev detour) | Done |
 
 ### Roadmap
 - [x] Local LLM running via Ollama
@@ -16,6 +28,12 @@ The core pipeline (mic → speech-to-text → LLM → text-to-speech) is working
 - [x] True push-to-talk (hold key to record, release to stop)
 - [ ] Hands-free / wake-word mode (voice activity detection)
 - [ ] Sprite/avatar reacting to conversation (optional, exploratory)
+
+## Current Stage
+
+**Stage 1: Push-to-talk — in progress**
+
+The core pipeline (mic → speech-to-text → LLM → text-to-speech) is working end-to-end with a fixed-duration recording window. Not yet implemented: true push-to-talk (hold-to-record), hands-free/wake-word mode, and the optional sprite/avatar layer.
 
 ## How It Works
 
