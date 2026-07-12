@@ -2,4 +2,4 @@ requests
 sounddevice
 scipy
 piper-tts
-pynput
+evdev
