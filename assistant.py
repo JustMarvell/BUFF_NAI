@@ -9,17 +9,18 @@ from modules.tts import start_worker, begin_session, queue_sentence, wait_until_
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
 
 def on_press(event):
+    print("[gui] on_press fired")
     set_button(bg="#e74c3c", text="Recording...")
     set_status("Recording...")
     threading.Thread(target=_begin_recording, daemon=True).start()
+    print("[gui] recording thread started")
     
 def _begin_recording():
+    print("[gui] _begin_recording thread running")
     stop_speaking()
-    try:
-        start_recording()
-    except Exception as e:
-        set_status(f"Mic error: {e}")
-        set_button(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
+    print("[gui] stop_speaking() returned, calling start_recording()")
+    start_recording()
+    print("[gui] start_recording() returned")
 
 def on_release(event):
     talk_button.config(bg="#f1c40f", text="Processing...", state="disabled")

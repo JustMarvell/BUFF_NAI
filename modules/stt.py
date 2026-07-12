@@ -47,6 +47,7 @@ def is_active():
 
 def start_recording():
     global _stream, _frames, _actual_rate
+    print("[stt] start_recording() called")
     if _stream is not None:
         try:
             _stream.stop()
@@ -59,17 +60,23 @@ def start_recording():
         _stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                                   device=_device, callback=_callback)
         _actual_rate = SAMPLE_RATE
-    except Exception:
+        print(f"[stt] opened at {SAMPLE_RATE}, device={_device}")
+    except Exception as e:
+        print(f"[stt] primary open failed: {e}")
         native_rate = int(sd.query_devices(_device)["default_samplerate"])
         _stream = sd.InputStream(samplerate=native_rate, channels=1, dtype="int16",
                                   device=_device, callback=_callback)
         _actual_rate = native_rate
+        print(f"[stt] opened at fallback rate {native_rate}, device={_device}")
     _stream.start()
+    print("[stt] stream.start() succeeded")
     _stream_ready.set()
 
 def stop_recording(filename="input.wav"):
     global _stream
-    _stream_ready.wait(timeout=5)
+    print(f"[stt] stop_recording() called, _stream is None: {_stream is None}")
+    ready = _stream_ready.wait(timeout=5)
+    print(f"[stt] _stream_ready.wait() returned: {ready}, _stream is None: {_stream is None}")
     if _stream is None:
         return None
     _stream.stop()
