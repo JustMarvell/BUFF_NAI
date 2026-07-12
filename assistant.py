@@ -1,26 +1,24 @@
 import tkinter as tk
 from tkinter import ttk
+import threading
 from modules.stt import (start_recording, stop_recording, transcribe,
                           list_devices, set_device, get_device, get_level, is_active)
-import threading
-from modules.stt import start_recording, stop_recording, transcribe
 from modules.llm import ask_stream, reset_history
 from modules.tts import start_worker, begin_session, queue_sentence, wait_until_done, stop_speaking
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
 
 def on_press(event):
-    print("[gui] on_press fired")
     set_button(bg="#e74c3c", text="Recording...")
     set_status("Recording...")
     threading.Thread(target=_begin_recording, daemon=True).start()
-    print("[gui] recording thread started")
-    
+
 def _begin_recording():
-    print("[gui] _begin_recording thread running")
     stop_speaking()
-    print("[gui] stop_speaking() returned, calling start_recording()")
-    start_recording()
-    print("[gui] start_recording() returned")
+    try:
+        start_recording()
+    except Exception as e:
+        set_status(f"Mic error: {e}")
+        set_button(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
 
 def on_release(event):
     talk_button.config(bg="#f1c40f", text="Processing...", state="disabled")
@@ -62,18 +60,18 @@ def process_audio():
 
 def reset_button():
     set_button(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
-    
+
 def on_new_conversation():
     reset_history()
     status_label.config(text="New conversation started.")
-    
+
 def on_stop_speaking():
     threading.Thread(target=_stop_speaking_thread, daemon=True).start()
-    
+
 def _stop_speaking_thread():
     stop_speaking()
     set_status("Playback stopped.")
-    
+
 def on_ollama_control(action_func, label):
     set_status(f"Ollama: {label}ing...")
     threading.Thread(target=_ollama_control_thread, args=(action_func, label), daemon=True).start()
@@ -84,10 +82,10 @@ def _ollama_control_thread(action_func, label):
         set_status(f"Ollama: {label} succeeded.")
     except RuntimeError as e:
         set_status(f"Ollama {label} failed: {e}")
-        
+
 def set_status(text):
     root.after(0, lambda: status_label.config(text=text))
-    
+
 def set_button(bg=None, text=None, state=None):
     def _update():
         if bg is not None:
@@ -97,7 +95,7 @@ def set_button(bg=None, text=None, state=None):
         if state is not None:
             talk_button.config(state=state)
     root.after(0, _update)
-    
+
 def draw_meter(level):
     width = int(280 * level)
     color = "#2ecc71" if level < 0.7 else "#e74c3c"
@@ -168,7 +166,5 @@ status_label = tk.Label(root, text="Hold the button to talk", wraplength=280)
 status_label.pack()
 
 start_worker()
-
 update_meter()
-root.mainloop()
 root.mainloop()
