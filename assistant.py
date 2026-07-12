@@ -46,13 +46,14 @@ def process_audio():
     reset_button()
 
 def reset_button():
-    talk_button.config(bg="SystemButtonFace", text="Hold to Talk", state="normal")
+    talk_button.config(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
 
 root = tk.Tk()
 root.title("BUFF_NAI")
 root.geometry("300x150")
 
 talk_button = tk.Button(root, text="Hold to Talk", font=("Arial", 14), width=20, height=3)
+DEFAULT_BG = talk_button.cget("bg")
 talk_button.bind("<ButtonPress-1>", on_press)
 talk_button.bind("<ButtonRelease-1>", on_release)
 talk_button.pack(pady=20)
