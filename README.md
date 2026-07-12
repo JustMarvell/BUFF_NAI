@@ -1,10 +1,10 @@
 # BUFF_NAI
 
-A fully local, offline AI Voice TTS.
+A fully local, offline AI TTS.
 
 ### Stages (project-level roadmap)
-Stage 1 — Push-to-talk - [v] Complete
-- The core loop: hold a button, speak, get transcribed, get a reply from a local LLM, hear it spoken back. Fully local, no cloud.
+Stage 1 — Push-to-talk — [x] Complete
+- The core loop: hold a button in a GUI window, speak, get transcribed, get a reply from a local LLM, hear it spoken back. Fully local, no cloud.
 
 Stage 2 — Hands-free / wake-word mode — Not started
 - Always-listening mode instead of holding a button. Requires voice activity detection (VAD) so the assistant knows when you're speaking without a manual trigger.
@@ -13,27 +13,31 @@ Stage 3 — Sprite/avatar layer — Not started, optional/exploratory
 - A visual character (PNG or sprite) that reacts to the conversation — e.g., changes expression based on sentiment or conversation state.
 
 ### Phases (the build steps that made up Stage 1)
-| Phase | What it was | Status | 
+| Phase | What it was | Status |
 | --- | --- | --- |
-| Phase 1 | Local LLM running via Ollama, basic terminal chat test | Done | 
-| Phase 2 | Speech-to-text via whisper.cpp, mic recording test | Done | 
+| Phase 1 | Local LLM running via Ollama, basic terminal chat test | Done |
+| Phase 2 | Speech-to-text via whisper.cpp, mic recording test | Done |
 | Phase 3 | Text-to-speech via Piper, voice output test | Done |
 | Phase 4 | Merged mic → LLM → voice into one working loop, converted to a GUI push-to-talk button (after the Wayland/pynput/evdev detour) | Done |
+| Phase 5 | Polish: visual recording states, error handling for offline services, conversation reset, stop-speaking control, Ollama service controls | Done |
 
 ### Roadmap
 - [x] Local LLM running via Ollama
 - [x] Speech-to-text via whisper.cpp
 - [x] Text-to-speech via Piper
 - [x] Merged mic → LLM → voice loop (fixed 5s recording window)
-- [x] True push-to-talk (hold key to record, release to stop)
+- [x] True push-to-talk via GUI button (global hotkeys blocked on Wayland, switched to a Tkinter hold-button instead)
+- [x] Stage 1 polish (status colors, error handling, conversation reset, stop-speaking, Ollama controls)
 - [ ] Hands-free / wake-word mode (voice activity detection)
 - [ ] Sprite/avatar reacting to conversation (optional, exploratory)
 
 ## Current Stage
 
-**Stage 1: Push-to-talk — in progress**
+**Stage 1: Push-to-talk — Complete**
 
-The core pipeline (mic → speech-to-text → LLM → text-to-speech) is working end-to-end with a fixed-duration recording window. Not yet implemented: true push-to-talk (hold-to-record), hands-free/wake-word mode, and the optional sprite/avatar layer.
+The full pipeline (mic → speech-to-text → LLM → text-to-speech) runs end-to-end through a GUI push-to-talk button. True global-hotkey push-to-talk was attempted first (`pynput`, then `evdev`) but blocked by Wayland's input restrictions; a Tkinter GUI button sidesteps this cleanly and works identically on X11 or Wayland. Stage 1 also includes polish: a color-coded button (idle / recording / processing / speaking), friendly error handling if Ollama or Piper aren't reachable, a conversation reset button, a stop-speaking button, and start/stop/restart controls for the Ollama service.
+
+Not yet implemented: hands-free/wake-word mode and the optional sprite/avatar layer.
 
 ## How It Works
 
@@ -55,10 +59,11 @@ No dedicated GPU is required. A 7-8B quantized model comfortably fits in 16GB RA
 
 **Software:**
 - Python 3.12+
-- [Ollama](https://ollama.com)
+- [Ollama](https://ollama.com) (installed as a systemd service)
 - [whisper.cpp](https://github.com/ggerganov/whisper.cpp) (built from source, requires `cmake` + `build-essential`)
 - [Piper](https://github.com/rhasspy/piper) (`piper-tts` pip package)
 - `portaudio19-dev` (system library, required by `sounddevice`)
+- `python3-tk` (Tkinter, for the GUI)
 
 ## Setup / Replication
 
@@ -67,6 +72,7 @@ No dedicated GPU is required. A 7-8B quantized model comfortably fits in 16GB RA
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen2.5:7b-instruct-q4_K_M
 ```
+This installs Ollama as a systemd service (`ollama.service`), running automatically in the background.
 
 ### 2. Build whisper.cpp
 ```bash
@@ -90,32 +96,45 @@ wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/mediu
 wget https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/amy/medium/en_US-amy-medium.onnx.json
 ```
 
-### 4. Install Python dependencies
+### 4. Install GUI and Python dependencies
 ```bash
+sudo apt install -y python3-tk
 pip install -r requirements.txt
 ```
 
 ### 5. Configure paths
 Edit `config.py` to match where you installed whisper.cpp and downloaded the Piper voice model on your machine.
 
-### 6. Run
+### 6. (Optional) Enable in-app Ollama controls
+The GUI includes Start/Stop/Restart buttons for the Ollama service, which need passwordless `sudo` for those specific commands only:
+```bash
+sudo visudo -f /etc/sudoers.d/ollama-control
+```
+Add (adjust the username and `systemctl` path to match your system — check with `which systemctl`):
+```
+<your_username> ALL=(ALL) NOPASSWD: /usr/bin/systemctl start ollama, /usr/bin/systemctl stop ollama, /usr/bin/systemctl restart ollama
+```
+Skip this step if you'd rather manage Ollama manually — the rest of the app works fine without it.
+
+### 7. Run
 ```bash
 python3 assistant.py
 ```
-Press Enter to record (5 second window), speak, and the assistant will transcribe, respond, and speak back.
+A GUI window opens. Hold the "Hold to Talk" button to record, release to send. The button changes color to reflect state (recording, processing, speaking), and separate buttons let you start a new conversation, stop playback mid-reply, or control the Ollama service.
 
 ## Project Structure
 
 ```
 BUFF_NAI/
-├── assistant.py       # Main entry point — mic → STT → LLM → TTS loop
-├── config.py           # All paths and model constants
+├── assistant.py         # Main entry point — GUI, wires modules together
+├── config.py              # All paths and model constants
 ├── modules/
-│   ├── stt.py            # Recording + Whisper transcription
-│   ├── llm.py             # Ollama chat wrapper + conversation history
-│   └── tts.py              # Piper speech synthesis
-├── sandbox/             # Early standalone test scripts, kept for reference
-├── sprite/              # Placeholder for future avatar/sprite phase
+│   ├── stt.py               # Recording + Whisper transcription
+│   ├── llm.py                # Ollama chat wrapper + conversation history
+│   ├── tts.py                 # Piper speech synthesis + playback control
+│   └── ollama_ctl.py            # Start/stop/restart the Ollama systemd service
+├── sandbox/               # Early standalone test scripts, kept for reference
+├── sprite/                # Placeholder for future avatar/sprite phase
 └── requirements.txt
 ```
 
