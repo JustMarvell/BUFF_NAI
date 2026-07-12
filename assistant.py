@@ -6,9 +6,12 @@ from modules.tts import start_worker, begin_session, queue_sentence, wait_until_
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
 
 def on_press(event):
+    set_button(bg="#e74c3c", text="Recording...")
+    set_status("Recording...")
+    threading.Thread(target=_begin_recording, daemon=True).start()
+    
+def _begin_recording():
     stop_speaking()
-    talk_button.config(bg="#e74c3c", text="Recording...")
-    status_label.config(text="Recording...")
     start_recording()
 
 def on_release(event):
