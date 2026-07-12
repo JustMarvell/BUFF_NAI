@@ -8,9 +8,35 @@ from config import SAMPLE_RATE, WHISPER_BIN, WHISPER_MODEL
 _frames = []
 _stream = None
 _stream_ready = threading.Event()
+_level = 0.0
+_device = None  # None = system default
 
 def _callback(indata, frame_count, time_info, status):
+    global _level
     _frames.append(indata.copy())
+    rms = np.sqrt(np.mean(indata.astype(np.float32) ** 2))
+    _level = min(rms / 4000, 1.0)  # tune divisor if meter feels too sensitive/insensitive
+
+def list_devices():
+    """Returns [(index, name), ...] for input-capable devices."""
+    return [(i, d["name"]) for i, d in enumerate(sd.query_devices()) if d["max_input_channels"] > 0]
+
+def set_device(index):
+    global _device
+    _device = index
+
+def get_device():
+    """Returns (index, name) of the device currently selected (or system default)."""
+    if _device is not None:
+        return _device, sd.query_devices(_device)["name"]
+    idx = sd.default.device[0]
+    return idx, sd.query_devices(idx)["name"]
+
+def get_level():
+    return _level
+
+def is_active():
+    return _stream is not None
 
 def start_recording():
     global _stream, _frames
@@ -22,7 +48,8 @@ def start_recording():
             pass
     _stream_ready.clear()
     _frames = []
-    _stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16", callback=_callback)
+    _stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
+                              device=_device, callback=_callback)
     _stream.start()
     _stream_ready.set()
 

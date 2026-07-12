@@ -1,4 +1,7 @@
 import tkinter as tk
+from tkinter import ttk
+from modules.stt import (start_recording, stop_recording, transcribe,
+                          list_devices, set_device, get_device, get_level, is_active)
 import threading
 from modules.stt import start_recording, stop_recording, transcribe
 from modules.llm import ask_stream, reset_history
@@ -89,6 +92,19 @@ def set_button(bg=None, text=None, state=None):
         if state is not None:
             talk_button.config(state=state)
     root.after(0, _update)
+    
+def draw_meter(level):
+    width = int(280 * level)
+    color = "#2ecc71" if level < 0.7 else "#e74c3c"
+    meter_canvas.coords(meter_bar, 0, 0, width, 16)
+    meter_canvas.itemconfig(meter_bar, fill=color)
+
+def update_meter():
+    active = is_active()
+    draw_meter(get_level() if active else 0.0)
+    idx, name = get_device()
+    mic_status_label.config(text=f"Mic: {name} ({'Active' if active else 'Idle'})")
+    root.after(50, update_meter)
 
 root = tk.Tk()
 root.title("BUFF_NAI")
@@ -98,6 +114,33 @@ ollama_frame = tk.Frame(root)
 ollama_frame.pack(pady=5)
 
 talk_button = tk.Button(root, text="Hold to Talk", font=("Arial", 14), width=20, height=3)
+
+meter_canvas = tk.Canvas(root, width=280, height=16, bg="#222", highlightthickness=0)
+meter_canvas.pack(pady=(0, 5))
+meter_bar = meter_canvas.create_rectangle(0, 0, 0, 16, fill="#2ecc71", width=0)
+
+mic_status_label = tk.Label(root, text="Mic: —")
+mic_status_label.pack()
+
+_devices = list_devices()
+_device_names = [name for _, name in _devices]
+_device_indices = [idx for idx, _ in _devices]
+
+device_var = tk.StringVar()
+
+def on_device_change(event=None):
+    selected = device_var.get()
+    idx = _device_indices[_device_names.index(selected)]
+    set_device(idx)
+
+device_menu = ttk.Combobox(root, textvariable=device_var, values=_device_names,
+                            state="readonly", width=38)
+if _device_names:
+    default_idx, default_name = get_device()
+    device_var.set(default_name if default_name in _device_names else _device_names[0])
+device_menu.pack(pady=5)
+device_menu.bind("<<ComboboxSelected>>", on_device_change)
+
 DEFAULT_BG = talk_button.cget("bg")
 talk_button.bind("<ButtonPress-1>", on_press)
 talk_button.bind("<ButtonRelease-1>", on_release)
@@ -121,4 +164,6 @@ status_label.pack()
 
 start_worker()
 
+update_meter()
+root.mainloop()
 root.mainloop()
