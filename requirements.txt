@@ -2,4 +2,3 @@ requests
 sounddevice
 scipy
 piper-tts
-evdev
