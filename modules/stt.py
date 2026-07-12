@@ -1,6 +1,7 @@
 import sounddevice as sd
 import numpy as np
 from scipy.io.wavfile import write
+from scipy.signal import resample_poly
 import subprocess
 import threading
 from config import SAMPLE_RATE, WHISPER_BIN, WHISPER_MODEL
@@ -10,6 +11,7 @@ _stream = None
 _stream_ready = threading.Event()
 _level = 0.0
 _device = None  # None = system default
+_actual_rate = SAMPLE_RATE
 
 def _callback(indata, frame_count, time_info, status):
     global _level
@@ -39,7 +41,7 @@ def is_active():
     return _stream is not None
 
 def start_recording():
-    global _stream, _frames
+    global _stream, _frames, _actual_rate
     if _stream is not None:
         try:
             _stream.stop()
@@ -48,8 +50,15 @@ def start_recording():
             pass
     _stream_ready.clear()
     _frames = []
-    _stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
-                              device=_device, callback=_callback)
+    try:
+        _stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
+                                  device=_device, callback=_callback)
+        _actual_rate = SAMPLE_RATE
+    except Exception:
+        native_rate = int(sd.query_devices(_device)["default_samplerate"])
+        _stream = sd.InputStream(samplerate=native_rate, channels=1, dtype="int16",
+                                  device=_device, callback=_callback)
+        _actual_rate = native_rate
     _stream.start()
     _stream_ready.set()
 
@@ -64,6 +73,8 @@ def stop_recording(filename="input.wav"):
     if not _frames:
         return None
     audio = np.concatenate(_frames, axis=0)
+    if _actual_rate != SAMPLE_RATE:
+        audio = resample_poly(audio, SAMPLE_RATE, _actual_rate).astype(np.int16)
     write(filename, SAMPLE_RATE, audio)
     return filename
 

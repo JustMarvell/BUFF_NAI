@@ -15,7 +15,11 @@ def on_press(event):
     
 def _begin_recording():
     stop_speaking()
-    start_recording()
+    try:
+        start_recording()
+    except Exception as e:
+        set_status(f"Mic error: {e}")
+        set_button(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
 
 def on_release(event):
     talk_button.config(bg="#f1c40f", text="Processing...", state="disabled")
