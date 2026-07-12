@@ -3,8 +3,8 @@ from scipy.io.wavfile import write
 import subprocess
 
 SAMPLE_RATE = 16000
-WHISPER_BIN = "./whisper.cpp/main"
-WHISPER_MODEL = "./whisper.cpp/models/ggml-base.en.bin"
+WHISPER_BIN = "/home/vellosaurus/whisper.cpp/build/bin/whisper-cli"
+WHISPER_MODEL = "/home/vellosaurus/whisper.cpp/models/ggml-base.en.bin"
 
 def record_audio(filename="input.wav", duration=5):
     print("Recording...")
