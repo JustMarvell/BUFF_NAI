@@ -2,10 +2,11 @@ import tkinter as tk
 import threading
 from modules.stt import start_recording, stop_recording, transcribe
 from modules.llm import ask_stream, reset_history
-from modules.tts import speak, stop_speaking, start_worker, begin_session, queue_sentence, wait_until_done, stop_speaking
+from modules.tts import start_worker, begin_session, queue_sentence, wait_until_done, stop_speaking
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
 
 def on_press(event):
+    stop_speaking()
     talk_button.config(bg="#e74c3c", text="Recording...")
     status_label.config(text="Recording...")
     start_recording()
@@ -18,38 +19,41 @@ def on_release(event):
 def process_audio():
     filename = stop_recording()
     if not filename:
-        status_label.config(text="Nothing recorded, try again.")
+        set_status("Nothing recorded, try again.")
         reset_button()
         return
 
     text = transcribe(filename)
     if not text:
-        status_label.config(text="Nothing transcribed, try again.")
+        set_status("Nothing transcribed, try again.")
         reset_button()
         return
 
-    status_label.config(text=f"You said: {text}")
-    talk_button.config(bg="#3498db", text="Speaking...")
+    set_status(f"You said: {text}")
+    set_button(bg="#3498db", text="Speaking...")
     begin_session()
 
     reply_parts = []
     def on_sentence(sentence):
         reply_parts.append(sentence)
         queue_sentence(sentence)
-        status_label.config(text=f"AI: {' '.join(reply_parts)}")
+        set_status(f"AI: {' '.join(reply_parts)}")
 
     try:
         ask_stream(text, on_sentence)
     except ConnectionError as e:
-        status_label.config(text=f"{e}\nIs Ollama running?")
+        set_status(f"{e}\nIs Ollama running?")
         reset_button()
         return
 
     wait_until_done()
     reset_button()
 
+    wait_until_done()
+    reset_button()
+
 def reset_button():
-    talk_button.config(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
+    set_button(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
     
 def on_new_conversation():
     reset_history()
@@ -65,10 +69,23 @@ def on_ollama_control(action_func, label):
         status_label.config(text=f"Ollama: {label} succeeded.")
     except RuntimeError as e:
         status_label.config(text=f"Ollama {label} failed: {e}")
+        
+def set_status(text):
+    root.after(0, lambda: status_label.config(text=text))
+    
+def set_button(bg=None, text=None, state=None):
+    def _update():
+        if bg is not None:
+            talk_button.config(bg=bg)
+        if text is not None:
+            talk_button.config(text=text)
+        if state is not None:
+            talk_button.config(state=state)
+    root.after(0, _update)
 
 root = tk.Tk()
 root.title("BUFF_NAI")
-root.geometry("500x200")
+root.geometry("500x400")
 
 ollama_frame = tk.Frame(root)
 ollama_frame.pack(pady=5)
