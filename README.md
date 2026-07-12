@@ -13,7 +13,7 @@ The core pipeline (mic → speech-to-text → LLM → text-to-speech) is working
 - [x] Speech-to-text via whisper.cpp
 - [x] Text-to-speech via Piper
 - [x] Merged mic → LLM → voice loop (fixed 5s recording window)
-- [ ] True push-to-talk (hold key to record, release to stop)
+- [x] True push-to-talk (hold key to record, release to stop)
 - [ ] Hands-free / wake-word mode (voice activity detection)
 - [ ] Sprite/avatar reacting to conversation (optional, exploratory)
 
