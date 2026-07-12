@@ -2,7 +2,7 @@ import tkinter as tk
 import threading
 from modules.stt import start_recording, stop_recording, transcribe
 from modules.llm import ask, reset_history
-from modules.tts import speak
+from modules.tts import speak, stop_speaking
 
 def on_press(event):
     talk_button.config(bg="#e74c3c", text="Recording...")
@@ -58,7 +58,10 @@ def reset_button():
 def on_new_conversation():
     reset_history()
     status_label.config(text="New conversation started.")
-
+    
+def on_stop_speaking():
+    stop_speaking()
+    status_label.config(text="Playback stopped.")
 
 root = tk.Tk()
 root.title("BUFF_NAI")
@@ -69,6 +72,9 @@ DEFAULT_BG = talk_button.cget("bg")
 talk_button.bind("<ButtonPress-1>", on_press)
 talk_button.bind("<ButtonRelease-1>", on_release)
 talk_button.pack(pady=20)
+
+stop_button = tk.Button(root, text="Stop Speaking", font=("Arial", 10), command=on_stop_speaking)
+stop_button.pack(pady=5)
 
 new_conv_button = tk.Button(root, text="New Conversation", font=("Arial", 10), command=on_new_conversation)
 new_conv_button.pack(pady=5)
