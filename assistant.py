@@ -20,15 +20,29 @@ def process_audio():
         status_label.config(text="No audio captured, try again.")
         reset_button()
         return
+
     text = transcribe(filename)
     if not text:
         status_label.config(text="Nothing transcribed, try again.")
         reset_button()
         return
+
     status_label.config(text=f"You said: {text}")
-    reply = ask(text)
+
+    try:
+        reply = ask(text)
+    except ConnectionError as e:
+        status_label.config(text=f"{e}\nIs Ollama running?")
+        reset_button()
+        return
+
     status_label.config(text=f"AI: {reply}")
-    speak(reply)
+
+    try:
+        speak(reply)
+    except RuntimeError as e:
+        status_label.config(text=f"AI: {reply}\n(voice error: {e})")
+
     reset_button()
 
 def reset_button():
