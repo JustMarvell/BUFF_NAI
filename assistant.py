@@ -5,10 +5,12 @@ from modules.llm import ask
 from modules.tts import speak
 
 def on_press(event):
+    talk_button.config(bg="#e74c3c", text="Recording...")
     status_label.config(text="Recording...")
     start_recording()
 
 def on_release(event):
+    talk_button.config(bg="#f1c40f", text="Processing...", state="disabled")
     status_label.config(text="Processing...")
     threading.Thread(target=process_audio, daemon=True).start()
 
@@ -16,15 +18,21 @@ def process_audio():
     filename = stop_recording()
     if not filename:
         status_label.config(text="No audio captured, try again.")
+        reset_button()
         return
     text = transcribe(filename)
     if not text:
         status_label.config(text="Nothing transcribed, try again.")
+        reset_button()
         return
     status_label.config(text=f"You said: {text}")
     reply = ask(text)
     status_label.config(text=f"AI: {reply}")
     speak(reply)
+    reset_button()
+
+def reset_button():
+    talk_button.config(bg="SystemButtonFace", text="Hold to Talk", state="normal")
 
 root = tk.Tk()
 root.title("BUFF_NAI")
