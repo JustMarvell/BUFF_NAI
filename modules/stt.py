@@ -34,3 +34,11 @@ def record_ptt(filename="input.wav"):
     audio = np.concatenate(frames, axis=0)
     write(filename, SAMPLE_RATE, audio)
     return filename
+
+def transcribe(filename="input.wav"):
+    subprocess.run(
+        [WHISPER_BIN, "-m", WHISPER_MODEL, "-f", filename, "-nt", "-otxt"],
+        capture_output=True, text=True
+    )
+    with open(f"{filename}.txt") as f:
+        return f.read().strip()
