@@ -2,22 +2,35 @@ import sounddevice as sd
 import numpy as np
 from scipy.io.wavfile import write
 import subprocess
+import threading
 from config import SAMPLE_RATE, WHISPER_BIN, WHISPER_MODEL
 
 _frames = []
 _stream = None
+_stream_ready = threading.Event()
 
 def _callback(indata, frame_count, time_info, status):
     _frames.append(indata.copy())
 
 def start_recording():
     global _stream, _frames
+    if _stream is not None:
+        try:
+            _stream.stop()
+            _stream.close()
+        except Exception:
+            pass
+    _stream_ready.clear()
     _frames = []
     _stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16", callback=_callback)
     _stream.start()
+    _stream_ready.set()
 
 def stop_recording(filename="input.wav"):
     global _stream
+    _stream_ready.wait(timeout=5)
+    if _stream is None:
+        return None
     _stream.stop()
     _stream.close()
     _stream = None
