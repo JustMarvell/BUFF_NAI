@@ -65,7 +65,7 @@ def on_stop_speaking():
 
 root = tk.Tk()
 root.title("BUFF_NAI")
-root.geometry("300x200")
+root.geometry("500x200")
 
 talk_button = tk.Button(root, text="Hold to Talk", font=("Arial", 14), width=20, height=3)
 DEFAULT_BG = talk_button.cget("bg")
