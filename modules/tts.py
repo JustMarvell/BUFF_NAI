@@ -86,7 +86,7 @@ def stop_speaking():
     with _sentence_queue.mutex:
         _sentence_queue.queue.clear()
     with _audio_queue.mutex:
-        while not _audio_queue.empty():
+        while _audio_queue.queue:
             path = _audio_queue.queue.popleft()
             if os.path.exists(path):
                 os.remove(path)
