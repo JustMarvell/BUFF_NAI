@@ -52,9 +52,6 @@ def process_audio():
     wait_until_done()
     reset_button()
 
-    wait_until_done()
-    reset_button()
-
 def reset_button():
     set_button(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
     
@@ -63,15 +60,22 @@ def on_new_conversation():
     status_label.config(text="New conversation started.")
     
 def on_stop_speaking():
+    threading.Thread(target=_stop_speaking_thread, daemon=True).start()
+    
+def _stop_speaking_thread():
     stop_speaking()
-    status_label.config(text="Playback stopped.")
+    set_status("Playback stopped.")
     
 def on_ollama_control(action_func, label):
+    set_status(f"Ollama: {label}ing...")
+    threading.Thread(target=_ollama_control_thread, args=(action_func, label), daemon=True).start()
+
+def _ollama_control_thread(action_func, label):
     try:
         action_func()
-        status_label.config(text=f"Ollama: {label} succeeded.")
+        set_status(f"Ollama: {label} succeeded.")
     except RuntimeError as e:
-        status_label.config(text=f"Ollama {label} failed: {e}")
+        set_status(f"Ollama {label} failed: {e}")
         
 def set_status(text):
     root.after(0, lambda: status_label.config(text=text))
