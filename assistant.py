@@ -6,6 +6,7 @@ from modules.stt import (start_recording, stop_recording, transcribe,
 from modules.llm import ask_stream, reset_history
 from modules.tts import start_worker, begin_session, queue_sentence, wait_until_done, stop_speaking
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
+from modules.persistence import load_conversation, append_entry, clear_conversation
 
 def on_press(event):
     set_button(bg="#e74c3c", text="Recording...")
@@ -38,7 +39,8 @@ def process_audio():
         reset_button()
         return
 
-    append_conversation(f"You: {text}\n", "user")
+    user_entry = append_entry("user", text)
+    append_conversation(f"[{user_entry['timestamp']}] You: {text}\n", "user")
     set_status("Thinking...")
     set_button(bg="#3498db", text="Speaking...")
     begin_session()
@@ -47,7 +49,7 @@ def process_audio():
     def on_sentence(sentence):
         nonlocal ai_started
         if not ai_started:
-            append_conversation("AI: ", "ai")
+            append_conversation(f"[{time.strftime('%H:%M:%S')}] AI: ", "ai")
             ai_started = True
         else:
             append_conversation(" ", "ai")
@@ -55,12 +57,13 @@ def process_audio():
         queue_sentence(sentence)
 
     try:
-        ask_stream(text, on_sentence)
+        full_reply = ask_stream(text, on_sentence)
     except ConnectionError as e:
         set_status(f"{e}\nIs Ollama running?")
         reset_button()
         return
 
+    append_entry("ai", full_reply)
     append_conversation("\n\n")
     set_status("Done.")
     wait_until_done()
@@ -71,6 +74,7 @@ def reset_button():
 
 def on_new_conversation():
     reset_history()
+    clear_conversation()
     conversation_text.config(state="normal")
     conversation_text.delete("1.0", "end")
     conversation_text.config(state="disabled")
@@ -197,6 +201,14 @@ conversation_scroll.config(command=conversation_text.yview)
 
 conversation_text.tag_config("user", foreground="#2980b9")
 conversation_text.tag_config("ai", foreground="#27ae60")
+
+for entry in load_conversation():
+    tag = "user" if entry["speaker"] == "user" else "ai"
+    label = "You" if entry["speaker"] == "user" else "AI"
+    conversation_text.config(state="normal")
+    conversation_text.insert("end", f"[{entry['timestamp']}] {label}: {entry['text']}\n\n", tag)
+    conversation_text.config(state="disabled")
+conversation_text.see("end")
 
 start_worker()
 update_meter()

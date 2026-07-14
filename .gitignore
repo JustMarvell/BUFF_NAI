@@ -223,3 +223,6 @@ __marimo__/
 input.wav
 input.wav.txt
 output.wav
+
+# Conversation history
+conversation_log.json
