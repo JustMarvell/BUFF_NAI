@@ -38,15 +38,20 @@ def process_audio():
         reset_button()
         return
 
-    set_status(f"You said: {text}")
+    append_conversation(f"You: {text}\n", "user")
+    set_status("Thinking...")
     set_button(bg="#3498db", text="Speaking...")
     begin_session()
 
-    reply_parts = []
+    ai_started = False
     def on_sentence(sentence):
-        reply_parts.append(sentence)
-        queue_sentence(sentence)
-        set_status(f"AI: {' '.join(reply_parts)}")
+        nonlocal ai_started
+        if not ai_started:
+            append_conversation("AI: ", "ai")
+            ai_started = True
+        else:
+            append_conversation(" ", "ai")
+        append_conversation(sentence, "ai")
 
     try:
         ask_stream(text, on_sentence)
@@ -55,6 +60,8 @@ def process_audio():
         reset_button()
         return
 
+    append_conversation("\n\n")
+    set_status("Done.")
     wait_until_done()
     reset_button()
 
@@ -63,6 +70,9 @@ def reset_button():
 
 def on_new_conversation():
     reset_history()
+    conversation_text.config(state="normal")
+    conversation_text.delete("1.0", "end")
+    conversation_text.config(state="disabled")
     status_label.config(text="New conversation started.")
 
 def on_stop_speaking():
@@ -94,6 +104,14 @@ def set_button(bg=None, text=None, state=None):
             talk_button.config(text=text)
         if state is not None:
             talk_button.config(state=state)
+    root.after(0, _update)
+    
+def append_conversation(text, tag=None):
+    def _update():
+        conversation_text.config(state="normal")
+        conversation_text.insert("end", text, tag)
+        conversation_text.see("end")
+        conversation_text.config(state="disabled")
     root.after(0, _update)
 
 def draw_meter(level):
@@ -164,6 +182,20 @@ tk.Button(ollama_frame, text="Restart Ollama", font=("Arial", 9),
 
 status_label = tk.Label(root, text="Hold the button to talk", wraplength=280)
 status_label.pack()
+
+conversation_frame = tk.Frame(root)
+conversation_frame.pack(pady=5, padx=10, fill="both", expand=True)
+
+conversation_scroll = tk.Scrollbar(conversation_frame)
+conversation_scroll.pack(side="right", fill="y")
+
+conversation_text = tk.Text(conversation_frame, height=10, wrap="word",
+                             yscrollcommand=conversation_scroll.set, state="disabled")
+conversation_text.pack(side="left", fill="both", expand=True)
+conversation_scroll.config(command=conversation_text.yview)
+
+conversation_text.tag_config("user", foreground="#2980b9")
+conversation_text.tag_config("ai", foreground="#27ae60")
 
 start_worker()
 update_meter()
