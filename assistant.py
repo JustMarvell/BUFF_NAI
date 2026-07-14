@@ -2,11 +2,13 @@ import tkinter as tk
 from tkinter import ttk
 import threading
 import time
+from collections import deque
 
 from modules.stt import (start_recording, stop_recording, transcribe,
                           list_devices, set_device, get_device, get_level, is_active)
 from modules.llm import ask_stream, reset_history
-from modules.tts import start_worker, begin_session, queue_sentence, wait_until_done, stop_speaking
+from modules.tts import (start_worker, begin_session, queue_sentence, wait_until_done,
+                          stop_speaking, is_speaking, get_tts_level)
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
 from modules.persistence import load_conversation, append_entry, clear_conversation, archive_conversation
 import modules.theme as t
@@ -146,11 +148,30 @@ def draw_meter(level):
     meter_canvas.coords(meter_bar, 0, 0, width, 10)
     meter_canvas.itemconfig(meter_bar, fill=color)
 
+WAVE_BARS = 32
+_wave_history = deque([0.0] * WAVE_BARS, maxlen=WAVE_BARS)
+
+def draw_waveform(speaking):
+    wave_canvas.delete("bar")
+    w, h = 280, 36
+    bar_w = w / WAVE_BARS
+    color = t.PINK if speaking else t.BG_INPUT
+    for i, level in enumerate(_wave_history):
+        bar_h = max(2, level * h)
+        x0, x1 = i * bar_w + 1, (i + 1) * bar_w - 1
+        y0 = (h - bar_h) / 2
+        wave_canvas.create_rectangle(x0, y0, x1, y0 + bar_h, fill=color, width=0, tags="bar")
+
 def update_meter():
     active = is_active()
     draw_meter(get_level() if active else 0.0)
     idx, name = get_device()
     mic_status_label.config(text=f"Mic  ·  {name}  ·  {'listening' if active else 'idle'}")
+
+    speaking = is_speaking()
+    _wave_history.append(get_tts_level() if speaking else 0.0)
+    draw_waveform(speaking)
+
     root.after(50, update_meter)
 
 def on_close():
@@ -206,6 +227,9 @@ meter_bar = meter_canvas.create_rectangle(0, 0, 0, 10, fill=t.ACCENT, width=0)
 
 mic_status_label = tk.Label(root, text="Mic  ·  —", font=t.FONT_SMALL, bg=t.BG_MAIN, fg=t.TEXT_MUTED)
 mic_status_label.pack()
+
+wave_canvas = tk.Canvas(root, width=280, height=36, bg=t.BG_MAIN, highlightthickness=0)
+wave_canvas.pack(pady=(10, 0))
 
 _devices = list_devices()
 _device_names = [name for _, name in _devices]
