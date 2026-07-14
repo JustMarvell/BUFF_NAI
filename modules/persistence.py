@@ -3,6 +3,7 @@ import os
 import time
 import zipfile
 from config import CONVERSATION_LOG, LOG_DIR
+from modules.memory import summarize_and_store
 
 os.makedirs(LOG_DIR, exist_ok=True)
 
@@ -39,5 +40,6 @@ def archive_conversation():
     with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zf:
         zf.writestr(f"{name}.json", json.dumps(entries, indent=2))
 
+    summarize_and_store(entries, source=name)
     clear_conversation()
     return archive_path

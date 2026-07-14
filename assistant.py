@@ -74,8 +74,8 @@ def reset_button():
     set_button(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
 
 def on_new_conversation():
-    reset_history()
     archive_conversation()
+    reset_history()
     conversation_text.config(state="normal")
     conversation_text.delete("1.0", "end")
     conversation_text.config(state="disabled")

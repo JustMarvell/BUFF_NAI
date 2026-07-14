@@ -13,3 +13,4 @@ SYSTEM_PROMPT = "You are a helpful, concise voice assistant."
 
 LOG_DIR = "logs"
 CONVERSATION_LOG = os.path.join(LOG_DIR, "latest_conversation_log.json")
+MEMORY_LOG = os.path.join(LOG_DIR, "memory.json")
