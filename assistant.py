@@ -27,23 +27,10 @@ def on_release(event):
     status_label.config(text="Processing...")
     threading.Thread(target=process_audio, daemon=True).start()
 
-def process_audio():
-    filename = stop_recording()
-    if not filename:
-        set_status("Nothing recorded, try again.")
-        reset_button()
-        return
-
-    text = transcribe(filename)
-    if not text:
-        set_status("Nothing transcribed, try again.")
-        reset_button()
-        return
-
+def process_text(text):
     user_entry = append_entry("user", text)
     append_conversation(f"[{user_entry['timestamp']}] You: {text}\n", "user")
     set_status("Thinking...")
-    set_button(bg="#3498db", text="Speaking...")
     begin_session()
 
     ai_started = False
@@ -61,14 +48,44 @@ def process_audio():
         full_reply = ask_stream(text, on_sentence)
     except ConnectionError as e:
         set_status(f"{e}\nIs Ollama running?")
-        reset_button()
         return
-
     append_entry("ai", full_reply)
     append_conversation("\n\n")
     set_status("Done.")
     wait_until_done()
+
+def process_audio():
+    filename = stop_recording()
+    if not filename:
+        set_status("Nothing recorded, try again.")
+        reset_button()
+        return
+    text = transcribe(filename)
+    if not text:
+        set_status("Nothing transcribed, try again.")
+        reset_button()
+        return
+    set_button(bg="#3498db", text="Speaking...")
+    process_text(text)
     reset_button()
+    
+def on_text_submit(event=None):
+    text = text_entry.get().strip()
+    if not text:
+        return
+    text_entry.delete(0, "end")
+    text_entry.config(state="disabled")
+    send_button.config(state="disabled")
+    threading.Thread(target=_text_submit_thread, args=(text,), daemon=True).start()
+
+def _text_submit_thread(text):
+    process_text(text)
+    root.after(0, _reset_text_input)
+
+def _reset_text_input():
+    text_entry.config(state="normal")
+    send_button.config(state="normal")
+    text_entry.focus()
 
 def reset_button():
     set_button(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
@@ -198,6 +215,16 @@ conversation_frame.pack(pady=5, padx=10, fill="both", expand=True)
 
 conversation_scroll = tk.Scrollbar(conversation_frame)
 conversation_scroll.pack(side="right", fill="y")
+
+input_frame = tk.Frame(root)
+input_frame.pack(pady=5, padx=10, fill="x")
+
+text_entry = tk.Entry(input_frame, font=("Arial", 11))
+text_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
+text_entry.bind("<Return>", on_text_submit)
+
+send_button = tk.Button(input_frame, text="Send", font=("Arial", 10), command=on_text_submit)
+send_button.pack(side="left")
 
 conversation_text = tk.Text(conversation_frame, height=10, wrap="word",
                              yscrollcommand=conversation_scroll.set, state="disabled")
