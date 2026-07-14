@@ -1,16 +1,19 @@
 import tkinter as tk
 from tkinter import ttk
 import threading
+import time
+
 from modules.stt import (start_recording, stop_recording, transcribe,
                           list_devices, set_device, get_device, get_level, is_active)
 from modules.llm import ask_stream, reset_history
 from modules.tts import start_worker, begin_session, queue_sentence, wait_until_done, stop_speaking
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
 from modules.persistence import load_conversation, append_entry, clear_conversation, archive_conversation
-import time
+import modules.theme as t
+
 
 def on_press(event):
-    set_button(bg="#e74c3c", text="Recording...")
+    set_button(bg=t.STATE_RECORDING, text="Recording...")
     set_status("Recording...")
     threading.Thread(target=_begin_recording, daemon=True).start()
 
@@ -20,10 +23,10 @@ def _begin_recording():
         start_recording()
     except Exception as e:
         set_status(f"Mic error: {e}")
-        set_button(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
+        set_button(bg=t.STATE_IDLE, text="Hold to Talk", state="normal")
 
 def on_release(event):
-    talk_button.config(bg="#f1c40f", text="Processing...", state="disabled")
+    talk_button.config(bg=t.STATE_PROCESSING, text="Processing...", state="disabled")
     status_label.config(text="Processing...")
     threading.Thread(target=process_audio, daemon=True).start()
 
@@ -37,7 +40,7 @@ def process_text(text):
     def on_sentence(sentence):
         nonlocal ai_started
         if not ai_started:
-            append_conversation(f"[{time.strftime('%H:%M:%S')}] AI: ", "ai")
+            append_conversation(f"[{time.strftime('%H:%M:%S')}] NAI: ", "ai")
             ai_started = True
         else:
             append_conversation(" ", "ai")
@@ -65,10 +68,10 @@ def process_audio():
         set_status("Nothing transcribed, try again.")
         reset_button()
         return
-    set_button(bg="#3498db", text="Speaking...")
+    set_button(bg=t.STATE_SPEAKING, text="Speaking...")
     process_text(text)
     reset_button()
-    
+
 def on_text_submit(event=None):
     text = text_entry.get().strip()
     if not text:
@@ -88,7 +91,7 @@ def _reset_text_input():
     text_entry.focus()
 
 def reset_button():
-    set_button(bg=DEFAULT_BG, text="Hold to Talk", state="normal")
+    set_button(bg=t.STATE_IDLE, text="Hold to Talk", state="normal")
 
 def on_new_conversation():
     archive_conversation()
@@ -122,13 +125,13 @@ def set_status(text):
 def set_button(bg=None, text=None, state=None):
     def _update():
         if bg is not None:
-            talk_button.config(bg=bg)
+            talk_button.config(bg=bg, activebackground=bg)
         if text is not None:
             talk_button.config(text=text)
         if state is not None:
             talk_button.config(state=state)
     root.after(0, _update)
-    
+
 def append_conversation(text, tag=None):
     def _update():
         conversation_text.config(state="normal")
@@ -139,35 +142,69 @@ def append_conversation(text, tag=None):
 
 def draw_meter(level):
     width = int(280 * level)
-    color = "#2ecc71" if level < 0.7 else "#e74c3c"
-    meter_canvas.coords(meter_bar, 0, 0, width, 16)
+    color = t.ACCENT if level < 0.7 else t.STATE_RECORDING
+    meter_canvas.coords(meter_bar, 0, 0, width, 10)
     meter_canvas.itemconfig(meter_bar, fill=color)
 
 def update_meter():
     active = is_active()
     draw_meter(get_level() if active else 0.0)
     idx, name = get_device()
-    mic_status_label.config(text=f"Mic: {name} ({'Active' if active else 'Idle'})")
+    mic_status_label.config(text=f"Mic  ·  {name}  ·  {'listening' if active else 'idle'}")
     root.after(50, update_meter)
-    
+
 def on_close():
     archive_conversation()
     root.destroy()
 
+
 root = tk.Tk()
 root.title("BUFF_NAI")
-root.geometry("500x800")
+root.geometry("520x820")
+root.configure(bg=t.BG_MAIN)
 
-ollama_frame = tk.Frame(root)
-ollama_frame.pack(pady=5)
+style = ttk.Style()
+style.theme_use("clam")
+style.configure("TCombobox",
+                 fieldbackground=t.BG_INPUT, background=t.BG_INPUT,
+                 foreground=t.TEXT_PRIMARY, arrowcolor=t.ACCENT,
+                 bordercolor=t.BG_PANEL, lightcolor=t.BG_INPUT, darkcolor=t.BG_INPUT)
+style.map("TCombobox", fieldbackground=[("readonly", t.BG_INPUT)],
+          selectbackground=[("readonly", t.BG_INPUT)],
+          selectforeground=[("readonly", t.TEXT_PRIMARY)])
 
-talk_button = tk.Button(root, text="Hold to Talk", font=("Arial", 14), width=20, height=3)
+header_frame = tk.Frame(root, bg=t.BG_MAIN)
+header_frame.pack(pady=(18, 6))
+tk.Label(header_frame, text="BUFF_NAI", font=t.FONT_TITLE, bg=t.BG_MAIN, fg=t.ACCENT).pack()
+tk.Label(header_frame, text="your local voice companion", font=t.FONT_SUBTITLE,
+         bg=t.BG_MAIN, fg=t.TEXT_MUTED).pack()
 
-meter_canvas = tk.Canvas(root, width=280, height=16, bg="#222", highlightthickness=0)
-meter_canvas.pack(pady=(0, 5))
-meter_bar = meter_canvas.create_rectangle(0, 0, 0, 16, fill="#2ecc71", width=0)
+ollama_frame = tk.Frame(root, bg=t.BG_MAIN)
+ollama_frame.pack(pady=8)
 
-mic_status_label = tk.Label(root, text="Mic: —")
+def make_pill_button(parent, text, command, bg=t.BG_INPUT, fg=t.TEXT_PRIMARY, font=t.FONT_SMALL):
+    btn = tk.Button(parent, text=text, command=command, font=font,
+                     bg=bg, fg=fg, activebackground=t.ACCENT_SOFT, activeforeground=t.BG_MAIN,
+                     relief="flat", bd=0, padx=10, pady=4, cursor="hand2")
+    return btn
+
+make_pill_button(ollama_frame, "Start Ollama", lambda: on_ollama_control(start_ollama, "start")).pack(side="left", padx=3)
+make_pill_button(ollama_frame, "Stop Ollama", lambda: on_ollama_control(stop_ollama, "stop")).pack(side="left", padx=3)
+make_pill_button(ollama_frame, "Restart Ollama", lambda: on_ollama_control(restart_ollama, "restart")).pack(side="left", padx=3)
+
+talk_button = tk.Button(root, text="Hold to Talk", font=t.FONT_BUTTON, width=20, height=3,
+                         bg=t.STATE_IDLE, fg=t.TEXT_PRIMARY, activebackground=t.STATE_IDLE,
+                         activeforeground=t.TEXT_PRIMARY, relief="flat", bd=0, cursor="hand2")
+DEFAULT_BG = t.STATE_IDLE
+talk_button.bind("<ButtonPress-1>", on_press)
+talk_button.bind("<ButtonRelease-1>", on_release)
+talk_button.pack(pady=18)
+
+meter_canvas = tk.Canvas(root, width=280, height=10, bg=t.BG_INPUT, highlightthickness=0)
+meter_canvas.pack(pady=(0, 6))
+meter_bar = meter_canvas.create_rectangle(0, 0, 0, 10, fill=t.ACCENT, width=0)
+
+mic_status_label = tk.Label(root, text="Mic  ·  —", font=t.FONT_SMALL, bg=t.BG_MAIN, fg=t.TEXT_MUTED)
 mic_status_label.pack()
 
 _devices = list_devices()
@@ -182,65 +219,59 @@ def on_device_change(event=None):
     set_device(idx)
 
 device_menu = ttk.Combobox(root, textvariable=device_var, values=_device_names,
-                            state="readonly", width=38)
+                            state="readonly", width=38, style="TCombobox")
 if _device_names:
     default_idx, default_name = get_device()
     device_var.set(default_name if default_name in _device_names else _device_names[0])
-device_menu.pack(pady=5)
+device_menu.pack(pady=8)
 device_menu.bind("<<ComboboxSelected>>", on_device_change)
 
-DEFAULT_BG = talk_button.cget("bg")
-talk_button.bind("<ButtonPress-1>", on_press)
-talk_button.bind("<ButtonRelease-1>", on_release)
-talk_button.pack(pady=20)
+controls_frame = tk.Frame(root, bg=t.BG_MAIN)
+controls_frame.pack(pady=4)
+make_pill_button(controls_frame, "Stop Speaking", on_stop_speaking, bg=t.BG_INPUT, font=t.FONT_BODY).pack(side="left", padx=4)
+make_pill_button(controls_frame, "New Conversation", on_new_conversation, bg=t.BG_INPUT, font=t.FONT_BODY).pack(side="left", padx=4)
 
-stop_button = tk.Button(root, text="Stop Speaking", font=("Arial", 10), command=on_stop_speaking)
-stop_button.pack(pady=5)
+status_label = tk.Label(root, text="Hold the button to talk", wraplength=320, font=t.FONT_SMALL,
+                         bg=t.BG_MAIN, fg=t.TEXT_MUTED, justify="center")
+status_label.pack(pady=(6, 0))
 
-new_conv_button = tk.Button(root, text="New Conversation", font=("Arial", 10), command=on_new_conversation)
-new_conv_button.pack(pady=5)
+conversation_frame = tk.Frame(root, bg=t.BG_PANEL, highlightbackground=t.BG_INPUT, highlightthickness=1)
+conversation_frame.pack(pady=10, padx=16, fill="both", expand=True)
 
-tk.Button(ollama_frame, text="Start Ollama", font=("Arial", 9),
-          command=lambda: on_ollama_control(start_ollama, "start")).pack(side="left", padx=2)
-tk.Button(ollama_frame, text="Stop Ollama", font=("Arial", 9),
-          command=lambda: on_ollama_control(stop_ollama, "stop")).pack(side="left", padx=2)
-tk.Button(ollama_frame, text="Restart Ollama", font=("Arial", 9),
-          command=lambda: on_ollama_control(restart_ollama, "restart")).pack(side="left", padx=2)
-
-status_label = tk.Label(root, text="Hold the button to talk", wraplength=280)
-status_label.pack()
-
-conversation_frame = tk.Frame(root)
-conversation_frame.pack(pady=5, padx=10, fill="both", expand=True)
-
-conversation_scroll = tk.Scrollbar(conversation_frame)
+conversation_scroll = tk.Scrollbar(conversation_frame, bg=t.BG_PANEL, troughcolor=t.BG_MAIN,
+                                    activebackground=t.ACCENT_SOFT, relief="flat", bd=0)
 conversation_scroll.pack(side="right", fill="y")
 
-input_frame = tk.Frame(root)
-input_frame.pack(pady=5, padx=10, fill="x")
-
-text_entry = tk.Entry(input_frame, font=("Arial", 11))
-text_entry.pack(side="left", fill="x", expand=True, padx=(0, 5))
-text_entry.bind("<Return>", on_text_submit)
-
-send_button = tk.Button(input_frame, text="Send", font=("Arial", 10), command=on_text_submit)
-send_button.pack(side="left")
-
 conversation_text = tk.Text(conversation_frame, height=10, wrap="word",
-                             yscrollcommand=conversation_scroll.set, state="disabled")
+                             yscrollcommand=conversation_scroll.set, state="disabled",
+                             bg=t.BG_PANEL, fg=t.TEXT_PRIMARY, insertbackground=t.TEXT_PRIMARY,
+                             selectbackground=t.ACCENT_SOFT, relief="flat", bd=0,
+                             padx=10, pady=10, font=t.FONT_BODY)
 conversation_text.pack(side="left", fill="both", expand=True)
 conversation_scroll.config(command=conversation_text.yview)
 
-conversation_text.tag_config("user", foreground="#2980b9")
-conversation_text.tag_config("ai", foreground="#27ae60")
+conversation_text.tag_config("user", foreground=t.ACCENT)
+conversation_text.tag_config("ai", foreground=t.PINK)
 
 for entry in load_conversation():
     tag = "user" if entry["speaker"] == "user" else "ai"
-    label = "You" if entry["speaker"] == "user" else "AI"
+    label = "You" if entry["speaker"] == "user" else "NAI"
     conversation_text.config(state="normal")
     conversation_text.insert("end", f"[{entry['timestamp']}] {label}: {entry['text']}\n\n", tag)
     conversation_text.config(state="disabled")
 conversation_text.see("end")
+
+input_frame = tk.Frame(root, bg=t.BG_MAIN)
+input_frame.pack(pady=(0, 16), padx=16, fill="x")
+
+text_entry = tk.Entry(input_frame, font=t.FONT_BODY, bg=t.BG_INPUT, fg=t.TEXT_PRIMARY,
+                       insertbackground=t.TEXT_PRIMARY, relief="flat", bd=0,
+                       highlightthickness=1, highlightbackground=t.BG_INPUT, highlightcolor=t.ACCENT)
+text_entry.pack(side="left", fill="x", expand=True, ipady=6, padx=(0, 8))
+text_entry.bind("<Return>", on_text_submit)
+
+send_button = make_pill_button(input_frame, "Send", on_text_submit, bg=t.ACCENT_SOFT, fg=t.BG_MAIN, font=t.FONT_BODY)
+send_button.pack(side="left")
 
 root.protocol("WM_DELETE_WINDOW", on_close)
 
