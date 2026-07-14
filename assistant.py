@@ -130,7 +130,7 @@ def update_meter():
 
 root = tk.Tk()
 root.title("BUFF_NAI")
-root.geometry("500x400")
+root.geometry("500x800")
 
 ollama_frame = tk.Frame(root)
 ollama_frame.pack(pady=5)
