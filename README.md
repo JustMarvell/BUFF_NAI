@@ -6,13 +6,16 @@ A fully local, offline AI TTS.
 Stage 1 — Push-to-talk — [x] Complete
 - The core loop: hold a button in a GUI window, speak, get transcribed, get a reply from a local LLM, hear it spoken back. Fully local, no cloud.
 
+Stage 1.5 — Memory & persistence — [x] Complete
+- Conversations are logged, archived, and summarized into long-term memory (via embeddings) so NAI can recall facts about the user across sessions.
+
 Stage 2 — Hands-free / wake-word mode — Not started
 - Always-listening mode instead of holding a button. Requires voice activity detection (VAD) so the assistant knows when you're speaking without a manual trigger.
 
 Stage 3 — Sprite/avatar layer — Not started, optional/exploratory
 - A visual character (PNG or sprite) that reacts to the conversation — e.g., changes expression based on sentiment or conversation state.
 
-### Phases (the build steps that made up Stage 1)
+### Phases (the build steps so far)
 | Phase | What it was | Status |
 | --- | --- | --- |
 | Phase 1 | Local LLM running via Ollama, basic terminal chat test | Done |
@@ -20,32 +23,25 @@ Stage 3 — Sprite/avatar layer — Not started, optional/exploratory
 | Phase 3 | Text-to-speech via Piper, voice output test | Done |
 | Phase 4 | Merged mic → LLM → voice into one working loop, converted to a GUI push-to-talk button (after the Wayland/pynput/evdev detour) | Done |
 | Phase 5 | Polish: visual recording states, error handling for offline services, conversation reset, stop-speaking control, Ollama service controls | Done |
-
-### Roadmap
-- [x] Local LLM running via Ollama
-- [x] Speech-to-text via whisper.cpp
-- [x] Text-to-speech via Piper
-- [x] Merged mic → LLM → voice loop (fixed 5s recording window)
-- [x] True push-to-talk via GUI button (global hotkeys blocked on Wayland, switched to a Tkinter hold-button instead)
-- [x] Stage 1 polish (status colors, error handling, conversation reset, stop-speaking, Ollama controls)
-- [ ] Hands-free / wake-word mode (voice activity detection)
-- [ ] Sprite/avatar reacting to conversation (optional, exploratory)
+| Phase 6 | Streaming pipeline: LLM replies stream sentence-by-sentence straight into TTS instead of waiting for the full reply; live mic/TTS level meters and waveform display; mic device selector; text-input fallback alongside voice | Done |
+| Phase 7 | Conversation persistence: sessions are logged to JSON, restored on launch, and archived to zip on reset/close; archived conversations are summarized by the LLM into durable facts, embedded, and stored as long-term memory, retrieved by similarity to enrich future replies | Done |
 
 ## Current Stage
 
-**Stage 1: Push-to-talk — Complete**
+**Stage 1.5: Memory & persistence — Complete**
 
-The full pipeline (mic → speech-to-text → LLM → text-to-speech) runs end-to-end through a GUI push-to-talk button. True global-hotkey push-to-talk was attempted first (`pynput`, then `evdev`) but blocked by Wayland's input restrictions; a Tkinter GUI button sidesteps this cleanly and works identically on X11 or Wayland. Stage 1 also includes polish: a color-coded button (idle / recording / processing / speaking), friendly error handling if Ollama or Piper aren't reachable, a conversation reset button, a stop-speaking button, and start/stop/restart controls for the Ollama service.
+The full pipeline (mic → speech-to-text → LLM → text-to-speech) runs end-to-end through a GUI, with either push-to-talk or typed text input. Replies stream sentence-by-sentence so TTS starts speaking before the LLM finishes generating. Conversations persist across sessions: the current session is logged and restored on launch, and past sessions are archived and mined for durable facts (name, preferences, ongoing projects, etc.) that get embedded and recalled automatically in later conversations.
 
 Not yet implemented: hands-free/wake-word mode and the optional sprite/avatar layer.
 
 ## How It Works
 
-1. **STT** — [whisper.cpp](https://github.com/ggerganov/whisper.cpp) transcribes recorded audio to text, running fully on CPU.
-2. **LLM** — [Ollama](https://ollama.com) serves a local quantized model (default: Qwen2.5 7B Instruct) over a local HTTP API, maintaining conversation history.
-3. **TTS** — [Piper](https://github.com/rhasspy/piper) synthesizes the LLM's reply into speech and plays it back.
+1. **STT** — [whisper.cpp](https://github.com/ggerganov/whisper.cpp) transcribes recorded audio to text, running fully on CPU. Mic input device is selectable in the GUI, with automatic sample-rate fallback per device.
+2. **LLM** — [Ollama](https://ollama.com) serves a local quantized model (default: Qwen2.5 7B Instruct) over a local HTTP API, streaming the reply token-by-token and maintaining conversation history.
+3. **TTS** — [Piper](https://github.com/rhasspy/piper) synthesizes each completed sentence as it streams in and plays it back, so audio starts before the full reply is ready.
+4. **Memory** — Each session is logged to disk and restored on next launch. On "New Conversation" or app close, the session is archived (zipped) and summarized by the LLM into standalone facts, which are embedded (via `nomic-embed-text`) and stored. Future prompts are matched against stored facts by cosine similarity and injected as context, giving NAI recall of past conversations.
 
-All three run locally on-device. Nothing leaves the machine.
+All processing runs locally on-device. Nothing leaves the machine.
 
 ## Requirements
 
@@ -67,12 +63,13 @@ No dedicated GPU is required. A 7-8B quantized model comfortably fits in 16GB RA
 
 ## Setup / Replication
 
-### 1. Install Ollama and pull a model
+### 1. Install Ollama and pull models
 ```bash
 curl -fsSL https://ollama.com/install.sh | sh
 ollama pull qwen2.5:7b-instruct-q4_K_M
+ollama pull nomic-embed-text
 ```
-This installs Ollama as a systemd service (`ollama.service`), running automatically in the background.
+This installs Ollama as a systemd service (`ollama.service`), running automatically in the background. `nomic-embed-text` is used for memory embeddings.
 
 ### 2. Build whisper.cpp
 ```bash
@@ -120,21 +117,26 @@ Skip this step if you'd rather manage Ollama manually — the rest of the app wo
 ```bash
 python3 assistant.py
 ```
-A GUI window opens. Hold the "Hold to Talk" button to record, release to send. The button changes color to reflect state (recording, processing, speaking), and separate buttons let you start a new conversation, stop playback mid-reply, or control the Ollama service.
+A GUI window opens. Hold the "Hold to Talk" button to record, release to send — or type into the text field and hit Send/Enter. The button changes color to reflect state (recording, processing, speaking), a waveform shows mic/TTS activity, and separate buttons let you start a new conversation (archiving the current one into memory), stop playback mid-reply, pick a mic device, or control the Ollama service.
 
 ## Project Structure
 
 ```
 BUFF_NAI/
-├── assistant.py         # Main entry point — GUI, wires modules together
-├── config.py              # All paths and model constants
+├── assistant.py            # Main entry point — GUI, wires modules together
+├── config.py                 # All paths and model constants
 ├── modules/
-│   ├── stt.py               # Recording + Whisper transcription
-│   ├── llm.py                # Ollama chat wrapper + conversation history
-│   ├── tts.py                 # Piper speech synthesis + playback control
-│   └── ollama_ctl.py            # Start/stop/restart the Ollama systemd service
-├── sandbox/               # Early standalone test scripts, kept for reference
-├── sprite/                # Placeholder for future avatar/sprite phase
+│   ├── stt.py                   # Recording, device selection, Whisper transcription
+│   ├── llm.py                    # Ollama chat wrapper, streaming, conversation history
+│   ├── tts.py                     # Piper streaming synthesis + playback control
+│   ├── ollama_ctl.py               # Start/stop/restart the Ollama systemd service
+│   ├── persistence.py               # Conversation logging, loading, archiving
+│   └── memory.py                     # Fact extraction, embeddings, similarity recall
+├── scripts/
+│   └── backfill_embeddings.py     # One-off: embed any memory entries missing one
+├── sandbox/                # Early standalone test scripts, kept for reference
+├── sprite/                  # Placeholder for future avatar/sprite phase
+├── logs/                     # Conversation logs + archives (gitignored)
 └── requirements.txt
 ```
 
