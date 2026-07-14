@@ -7,6 +7,7 @@ from modules.llm import ask_stream, reset_history
 from modules.tts import start_worker, begin_session, queue_sentence, wait_until_done, stop_speaking
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
 from modules.persistence import load_conversation, append_entry, clear_conversation
+import time
 
 def on_press(event):
     set_button(bg="#e74c3c", text="Recording...")
