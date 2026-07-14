@@ -6,7 +6,7 @@ from modules.stt import (start_recording, stop_recording, transcribe,
 from modules.llm import ask_stream, reset_history
 from modules.tts import start_worker, begin_session, queue_sentence, wait_until_done, stop_speaking
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
-from modules.persistence import load_conversation, append_entry, clear_conversation
+from modules.persistence import load_conversation, append_entry, clear_conversation, archive_conversation
 import time
 
 def on_press(event):
@@ -75,7 +75,7 @@ def reset_button():
 
 def on_new_conversation():
     reset_history()
-    clear_conversation()
+    archive_conversation()
     conversation_text.config(state="normal")
     conversation_text.delete("1.0", "end")
     conversation_text.config(state="disabled")
@@ -132,6 +132,10 @@ def update_meter():
     idx, name = get_device()
     mic_status_label.config(text=f"Mic: {name} ({'Active' if active else 'Idle'})")
     root.after(50, update_meter)
+    
+def on_close():
+    archive_conversation()
+    root.destroy()
 
 root = tk.Tk()
 root.title("BUFF_NAI")
@@ -210,6 +214,8 @@ for entry in load_conversation():
     conversation_text.insert("end", f"[{entry['timestamp']}] {label}: {entry['text']}\n\n", tag)
     conversation_text.config(state="disabled")
 conversation_text.see("end")
+
+root.protocol("WM_DELETE_WINDOW", on_close)
 
 start_worker()
 update_meter()

@@ -1,3 +1,5 @@
+import os
+
 SAMPLE_RATE = 16000
 
 WHISPER_BIN = "/home/vellosaurus/whisper.cpp/build/bin/whisper-cli"
@@ -8,4 +10,6 @@ PIPER_MODEL = "/home/vellosaurus/piper_voices/en_US-amy-medium.onnx"
 OLLAMA_URL = "http://localhost:11434/api/chat"
 LLM_MODEL = "qwen2.5:7b-instruct-q4_K_M"
 SYSTEM_PROMPT = "You are a helpful, concise voice assistant."
-CONVERSATION_LOG = "conversation_log.json"
+
+LOG_DIR = "logs"
+CONVERSATION_LOG = os.path.join(LOG_DIR, "latest_conversation_log.json")

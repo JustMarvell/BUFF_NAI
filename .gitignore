@@ -225,4 +225,4 @@ input.wav.txt
 output.wav
 
 # Conversation history
-conversation_log.json
+logs/*
