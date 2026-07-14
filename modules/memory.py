@@ -8,8 +8,10 @@ from config import MEMORY_LOG, OLLAMA_URL, LLM_MODEL
 EXTRACTION_PROMPT = (
     "Extract durable facts about the user from this conversation that would be "
     "useful to remember in future sessions (preferences, ongoing projects, names, "
-    "decisions, etc). Ignore small talk. Return one fact per line, no numbering. "
-    "If nothing is worth remembering, return NOTHING.\n\nConversation:\n{transcript}"
+    "decisions, etc). Ignore small talk. Return each fact as a complete, "
+    "self-contained sentence (e.g. 'The user's name is Vello' not just 'Vello'), "
+    "one per line, no numbering. If nothing is worth remembering, return NOTHING.\n\n"
+    "Conversation:\n{transcript}"
 )
 
 def load_memory():
@@ -40,6 +42,7 @@ def add_facts(facts, source=None):
 
 def summarize_and_store(conversation_entries, source=None, timeout=30):
     if not conversation_entries:
+        print("[memory] no conversation entries, skipping")
         return
     transcript = "\n".join(f"{e['speaker']}: {e['text']}" for e in conversation_entries)
     prompt = EXTRACTION_PROMPT.format(transcript=transcript)
@@ -51,13 +54,17 @@ def summarize_and_store(conversation_entries, source=None, timeout=30):
         )
         resp.raise_for_status()
         reply = resp.json()["message"]["content"].strip()
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as e:
+        print(f"[memory] extraction request failed: {e}")
         return
 
+    print(f"[memory] raw extraction reply: {reply!r}")
     if not reply or reply.upper() == "NOTHING":
+        print("[memory] nothing worth storing")
         return
     facts = [line.strip("-• ").strip() for line in reply.splitlines() if line.strip()]
     add_facts(facts, source=source)
+    print(f"[memory] stored {len(facts)} fact(s)")
 
 def get_memory_context(limit=None):
     entries = load_memory()
