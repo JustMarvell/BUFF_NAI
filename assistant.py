@@ -52,6 +52,7 @@ def process_audio():
         else:
             append_conversation(" ", "ai")
         append_conversation(sentence, "ai")
+        queue_sentence(sentence)
 
     try:
         ask_stream(text, on_sentence)
