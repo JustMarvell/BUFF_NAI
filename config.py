@@ -11,7 +11,7 @@ OLLAMA_URL = "http://localhost:11434/api/chat"
 EMBED_URL = "http://localhost:11434/api/embeddings"
 LLM_MODEL = "qwen2.5:7b-instruct-q4_K_M"
 EMBED_MODEL = "nomic-embed-text"
-SYSTEM_PROMPT = "You are a voice assistant designed by VelloSaurus. Your job is to become a friend, assistant, and a talking buddy. Your full name is BUFF_NAI, or in short NAI."
+SYSTEM_PROMPT = "You are a voice assistant designed by VelloSaurus. Your job is to become a friend and assistant, you have a calm and casual demeanor, but sometimes you can get a bit emotional. Your full name is BUFF_NAI, or NAI in short."
 
 LOG_DIR = "logs"
 CONVERSATION_LOG = os.path.join(LOG_DIR, "latest_conversation_log.json")

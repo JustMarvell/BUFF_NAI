@@ -2,26 +2,26 @@ import requests
 import json
 import re
 from config import OLLAMA_URL, LLM_MODEL, SYSTEM_PROMPT
-from modules.memory import get_memory_context
+from modules.memory import get_relevant_context
 
 history = [{"role": "system", "content": SYSTEM_PROMPT}]
 SENTENCE_END = re.compile(r'(?<=[.!?])\s+')
 
-def _build_system_prompt():
-    mem = get_memory_context()
-    return f"{SYSTEM_PROMPT}\n\n{mem}" if mem else SYSTEM_PROMPT
-
-history = [{"role": "system", "content": _build_system_prompt()}]
-
 def ask_stream(prompt, on_sentence, timeout=30):
     """Streams the LLM reply, calling on_sentence(text) as each sentence completes."""
     history.append({"role": "user", "content": prompt})
+
+    context = get_relevant_context(prompt)
+    messages = history.copy()
+    if context:
+        messages.insert(-1, {"role": "system", "content": context})
+
     buffer = ""
     full_reply = ""
     try:
         resp = requests.post(
             OLLAMA_URL,
-            json={"model": LLM_MODEL, "messages": history, "stream": True},
+            json={"model": LLM_MODEL, "messages": messages, "stream": True},
             stream=True, timeout=timeout
         )
         resp.raise_for_status()
@@ -54,4 +54,4 @@ def ask_stream(prompt, on_sentence, timeout=30):
 
 def reset_history():
     global history
-    history = [{"role": "system", "content": _build_system_prompt()}]
+    history = [{"role": "system", "content": SYSTEM_PROMPT}]

@@ -1,9 +1,10 @@
 import json
+import math
 import os
 import time
 import uuid
 import requests
-from config import MEMORY_LOG, OLLAMA_URL, LLM_MODEL
+from config import MEMORY_LOG, OLLAMA_URL, EMBED_URL, LLM_MODEL, EMBED_MODEL
 
 EXTRACTION_PROMPT = (
     "Extract durable facts about the user from this conversation that would be "
@@ -27,6 +28,25 @@ def _save_memory(entries):
     with open(MEMORY_LOG, "w") as f:
         json.dump(entries, f, indent=2)
 
+def get_embedding(text, timeout=15):
+    try:
+        resp = requests.post(
+            EMBED_URL, json={"model": EMBED_MODEL, "prompt": text}, timeout=timeout
+        )
+        resp.raise_for_status()
+        return resp.json().get("embedding")
+    except requests.exceptions.RequestException as e:
+        print(f"[memory] embedding request failed: {e}")
+        return None
+
+def _cosine_similarity(a, b):
+    dot = sum(x * y for x, y in zip(a, b))
+    norm_a = math.sqrt(sum(x * x for x in a))
+    norm_b = math.sqrt(sum(y * y for y in b))
+    if norm_a == 0 or norm_b == 0:
+        return 0.0
+    return dot / (norm_a * norm_b)
+
 def add_facts(facts, source=None):
     entries = load_memory()
     now = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -36,7 +56,7 @@ def add_facts(facts, source=None):
             "text": fact,
             "timestamp": now,
             "source": source,
-            "embedding": None,
+            "embedding": get_embedding(fact),
         })
     _save_memory(entries)
 
@@ -65,6 +85,25 @@ def summarize_and_store(conversation_entries, source=None, timeout=30):
     facts = [line.strip("-• ").strip() for line in reply.splitlines() if line.strip()]
     add_facts(facts, source=source)
     print(f"[memory] stored {len(facts)} fact(s)")
+
+def get_relevant_context(query, top_k=3, min_similarity=0.5):
+    entries = load_memory()
+    query_embedding = get_embedding(query)
+    if not query_embedding:
+        return ""
+    scored = []
+    for e in entries:
+        if not e.get("embedding"):
+            continue
+        score = _cosine_similarity(query_embedding, e["embedding"])
+        if score >= min_similarity:
+            scored.append((score, e))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:top_k]
+    if not top:
+        return ""
+    facts = "\n".join(f"- {e['text']}" for _, e in top)
+    return f"Relevant context about the user from past conversations:\n{facts}"
 
 def get_memory_context(limit=None):
     entries = load_memory()
