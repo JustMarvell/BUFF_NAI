@@ -40,26 +40,30 @@ def _compute_envelope(path, chunk_ms=30):
     duration = len(data) / rate
     return levels, duration
 
+def synthesize_sentence(text):
+    fd, path = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    result = subprocess.run(
+        [PIPER_BIN, "--model", PIPER_MODEL, "--output_file", path],
+        input=text, text=True, capture_output=True, timeout=30
+    )
+    if result.returncode != 0:
+        os.remove(path)
+        raise RuntimeError(f"Piper failed: {result.stderr.strip()}")
+    envelope, duration = _compute_envelope(path)
+    return path, envelope, duration
+
 def _synth_worker():
     while True:
         text = _sentence_queue.get()
         if not _stop_flag.is_set():
             try:
-                fd, path = tempfile.mkstemp(suffix=".wav")
-                os.close(fd)
-                result = subprocess.run(
-                    [PIPER_BIN, "--model", PIPER_MODEL, "--output_file", path],
-                    input=text, text=True, capture_output=True, timeout=30
-                )
-                if result.returncode != 0:
-                    print(f"Piper failed: {result.stderr.strip()}")
-                    os.remove(path)
-                elif _stop_flag.is_set():
+                path, envelope, duration = synthesize_sentence(text)
+                if _stop_flag.is_set():
                     os.remove(path)
                 else:
-                    envelope, duration = _compute_envelope(path)
                     _audio_queue.put((path, envelope, duration))
-            except (FileNotFoundError, subprocess.TimeoutExpired) as e:
+            except (FileNotFoundError, subprocess.TimeoutExpired, RuntimeError) as e:
                 print(f"TTS synth error: {e}")
         _sentence_queue.task_done()
 

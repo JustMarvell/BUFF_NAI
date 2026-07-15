@@ -3,10 +3,11 @@ from tkinter import ttk
 import threading
 import time
 from collections import deque
-
+from modules import request_queue
+from modules.discord_bot import start_bot
 from modules.stt import (start_recording, stop_recording, transcribe,
                           list_devices, set_device, get_device, get_level, is_active)
-from modules.llm import ask_stream, reset_history
+from modules.llm import reset_history
 from modules.tts import (start_worker, begin_session, queue_sentence, wait_until_done,
                           stop_speaking, is_speaking, get_tts_level)
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
@@ -33,12 +34,14 @@ def on_release(event):
     threading.Thread(target=process_audio, daemon=True).start()
 
 def process_text(text):
-    user_entry = append_entry("user", text)
+    user_entry = append_entry("user", text, source="gui")
     append_conversation(f"[{user_entry['timestamp']}] You: {text}\n", "user")
     set_status("Thinking...")
     begin_session()
 
     ai_started = False
+    done_event = threading.Event()
+
     def on_sentence(sentence):
         nonlocal ai_started
         if not ai_started:
@@ -49,13 +52,17 @@ def process_text(text):
         append_conversation(sentence, "ai")
         queue_sentence(sentence)
 
-    try:
-        full_reply = ask_stream(text, on_sentence)
-    except ConnectionError as e:
+    def on_done(full_reply):
+        append_entry("ai", full_reply, source="gui")
+        append_conversation("\n\n")
+        done_event.set()
+
+    def on_error(e):
         set_status(f"{e}\nIs Ollama running?")
-        return
-    append_entry("ai", full_reply)
-    append_conversation("\n\n")
+        done_event.set()
+
+    request_queue.submit(text, "gui", on_sentence, on_done, on_error)
+    done_event.wait()
     set_status("Done.")
     wait_until_done()
 
@@ -300,5 +307,9 @@ send_button.pack(side="left")
 root.protocol("WM_DELETE_WINDOW", on_close)
 
 start_worker()
+request_queue.start_worker()
+start_bot()
+update_meter()
+root.mainloop()
 update_meter()
 root.mainloop()

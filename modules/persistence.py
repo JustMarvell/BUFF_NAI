@@ -16,9 +16,9 @@ def load_conversation():
     except (json.JSONDecodeError, OSError):
         return []
 
-def append_entry(speaker, text):
+def append_entry(speaker, text, source="gui"):
     entries = load_conversation()
-    entry = {"speaker": speaker, "text": text, "timestamp": time.strftime("%H:%M:%S")}
+    entry = {"speaker": speaker, "text": text, "source": source, "timestamp": time.strftime("%H:%M:%S")}
     entries.append(entry)
     with open(CONVERSATION_LOG, "w") as f:
         json.dump(entries, f, indent=2)
