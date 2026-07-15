@@ -19,24 +19,27 @@ _voice_client = None
 async def on_ready():
     global _loop
     _loop = asyncio.get_running_loop()
+    await bot.tree.sync()
     print(f"[discord] logged in as {bot.user}")
 
-@bot.command()
-async def join(ctx):
+@bot.tree.command(name="join", description="Bring NAI into your voice channel")
+async def join(interaction: discord.Interaction):
     global _voice_client
-    if not ctx.author.voice:
-        await ctx.send("You're not in a voice channel.")
+    if not interaction.user.voice:
+        await interaction.response.send_message("You're not in a voice channel.")
         return
-    _voice_client = await ctx.author.voice.channel.connect()
-    await ctx.send("Joined.")
+    _voice_client = await interaction.user.voice.channel.connect()
+    await interaction.response.send_message("Joined.")
 
-@bot.command()
-async def leave(ctx):
+@bot.tree.command(name="leave", description="Disconnect NAI from voice")
+async def leave(interaction: discord.Interaction):
     global _voice_client
     if _voice_client:
         await _voice_client.disconnect()
         _voice_client = None
-        await ctx.send("Left.")
+        await interaction.response.send_message("Left.")
+    else:
+        await interaction.response.send_message("Not in a voice channel.")
 
 def _speak_in_vc(text):
     if _voice_client is None or not _voice_client.is_connected():
