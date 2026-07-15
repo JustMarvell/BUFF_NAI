@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 SAMPLE_RATE = 16000
 
@@ -16,3 +18,5 @@ SYSTEM_PROMPT = "You are a voice assistant designed by VelloSaurus. Your job is 
 LOG_DIR = "logs"
 CONVERSATION_LOG = os.path.join(LOG_DIR, "latest_conversation_log.json")
 MEMORY_LOG = os.path.join(LOG_DIR, "memory.json")
+
+DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
