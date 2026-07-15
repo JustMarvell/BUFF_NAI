@@ -9,8 +9,8 @@ Stage 1 — Push-to-talk — [x] Complete
 Stage 1.5 — Memory & persistence — [x] Complete
 - Conversations are logged, archived, and summarized into long-term memory (via embeddings) so NAI can recall facts about the user across sessions.
 
-Stage 2 — Hands-free / wake-word mode — Not started
-- Always-listening mode instead of holding a button. Requires voice activity detection (VAD) so the assistant knows when you're speaking without a manual trigger.
+Stage 2 — Hands-free / wake-word mode — Exploratory testing started
+- Always-listening mode instead of holding a button. Requires voice activity detection (VAD) so the assistant knows when user is speaking without a manual trigger. Initial wake-word detection tested standalone via openWakeWord (sandbox/test_phrase_test.py), not yet integrated into the main pipeline.
 
 Stage 3 — Sprite/avatar layer — Not started, optional/exploratory
 - A visual character (PNG or sprite) that reacts to the conversation — e.g., changes expression based on sentiment or conversation state.
@@ -25,21 +25,26 @@ Stage 3 — Sprite/avatar layer — Not started, optional/exploratory
 | Phase 5 | Polish: visual recording states, error handling for offline services, conversation reset, stop-speaking control, Ollama service controls | Done |
 | Phase 6 | Streaming pipeline: LLM replies stream sentence-by-sentence straight into TTS instead of waiting for the full reply; live mic/TTS level meters and waveform display; mic device selector; text-input fallback alongside voice | Done |
 | Phase 7 | Conversation persistence: sessions are logged to JSON, restored on launch, and archived to zip on reset/close; archived conversations are summarized by the LLM into durable facts, embedded, and stored as long-term memory, retrieved by similarity to enrich future replies | Done |
+| Phase 8 | Discord bot integration: join/leave voice channel commands, mention-triggered text replies with TTS spoken into the voice channel; GUI and Discord requests now share a single serialized request queue (modules/request_queue.py) instead of the GUI calling the LLM directly | Done |
+
+## Current Stage
 
 ## Current Stage
 
 **Stage 1.5: Memory & persistence — Complete**
+**Stage 2: Hands-free / wake-word mode — Exploratory testing only**
 
-The full pipeline (mic → speech-to-text → LLM → text-to-speech) runs end-to-end through a GUI, with either push-to-talk or typed text input. Replies stream sentence-by-sentence so TTS starts speaking before the LLM finishes generating. Conversations persist across sessions: the current session is logged and restored on launch, and past sessions are archived and mined for durable facts (name, preferences, ongoing projects, etc.) that get embedded and recalled automatically in later conversations.
+The full pipeline (mic → speech-to-text → LLM → text-to-speech) runs end-to-end through a GUI, with either push-to-talk or typed text input, and now also through a Discord bot (mention NAI in a text channel, or `/join` a voice channel to hear replies spoken aloud). Both interfaces submit requests through a shared queue so they don't collide. Replies stream sentence-by-sentence so TTS starts speaking before the LLM finishes generating. Conversations persist across sessions: the current session is logged and restored on launch, and past sessions are archived and mined for durable facts that get embedded and recalled automatically in later conversations.
 
-Not yet implemented: hands-free/wake-word mode and the optional sprite/avatar layer.
+A standalone openWakeWord test exists for wake-word detection, but it isn't wired into the main assistant yet. Not yet implemented: hands-free mode in the main app and the optional sprite/avatar layer.
 
 ## How It Works
 
 1. **STT** — [whisper.cpp](https://github.com/ggerganov/whisper.cpp) transcribes recorded audio to text, running fully on CPU. Mic input device is selectable in the GUI, with automatic sample-rate fallback per device.
 2. **LLM** — [Ollama](https://ollama.com) serves a local quantized model (default: Qwen2.5 7B Instruct) over a local HTTP API, streaming the reply token-by-token and maintaining conversation history.
 3. **TTS** — [Piper](https://github.com/rhasspy/piper) synthesizes each completed sentence as it streams in and plays it back, so audio starts before the full reply is ready.
-4. **Memory** — Each session is logged to disk and restored on next launch. On "New Conversation" or app close, the session is archived (zipped) and summarized by the LLM into standalone facts, which are embedded (via `nomic-embed-text`) and stored. Future prompts are matched against stored facts by cosine similarity and injected as context, giving NAI recall of past conversations.
+4. **Discord** — A bot (`discord.py`) mirrors the same LLM pipeline: mentioning the bot in a text channel gets a text reply, and `/join`ing a voice channel makes it speak replies aloud via Piper. Both GUI and Discord requests go through a shared queue (`modules/request_queue.py`) so only one LLM call runs at a time.
+5. **Memory** — Each session is logged to disk and restored on next launch. On "New Conversation" or app close, the session is archived (zipped) and summarized by the LLM into standalone facts, which are embedded (via `nomic-embed-text`) and stored. Future prompts are matched against stored facts by cosine similarity and injected as context, giving NAI recall of past conversations.
 
 All processing runs locally on-device. Nothing leaves the machine.
 
@@ -50,6 +55,7 @@ All processing runs locally on-device. Nothing leaves the machine.
 - GPU: AMD Radeon 660M (integrated, not used for acceleration — inference runs on CPU)
 - RAM: 16 GB DDR5
 - OS: Linux (Zorin OS)
+- A Discord bot token (only needed if you want the Discord integration — see `.env.example`)
 
 No dedicated GPU is required. A 7-8B quantized model comfortably fits in 16GB RAM alongside Whisper and Piper.
 
@@ -99,10 +105,17 @@ sudo apt install -y python3-tk
 pip install -r requirements.txt
 ```
 
-### 5. Configure paths
+### 5. (Optional) Set up the Discord bot
+Copy `.env.example` to `.env` and fill in your bot token:
+```bash
+cp .env.example .env
+```
+Enable "Message Content Intent" for the bot in the Discord Developer Portal, and invite it with `bot` + `applications.commands` scopes. Skip this step if you don't want Discord support — the app runs fine without a token, the bot thread just won't log in.
+
+### 6. Configure paths
 Edit `config.py` to match where you installed whisper.cpp and downloaded the Piper voice model on your machine.
 
-### 6. (Optional) Enable in-app Ollama controls
+### 7. (Optional) Enable in-app Ollama controls
 The GUI includes Start/Stop/Restart buttons for the Ollama service, which need passwordless `sudo` for those specific commands only:
 ```bash
 sudo visudo -f /etc/sudoers.d/ollama-control
@@ -113,7 +126,7 @@ Add (adjust the username and `systemctl` path to match your system — check wit
 ```
 Skip this step if you'd rather manage Ollama manually — the rest of the app works fine without it.
 
-### 7. Run
+### 8. Run
 ```bash
 python3 assistant.py
 ```
@@ -122,21 +135,21 @@ A GUI window opens. Hold the "Hold to Talk" button to record, release to send �
 ## Project Structure
 
 ```
-BUFF_NAI/
-├── assistant.py            # Main entry point — GUI, wires modules together
-├── config.py                 # All paths and model constants
 ├── modules/
 │   ├── stt.py                   # Recording, device selection, Whisper transcription
 │   ├── llm.py                    # Ollama chat wrapper, streaming, conversation history
 │   ├── tts.py                     # Piper streaming synthesis + playback control
 │   ├── ollama_ctl.py               # Start/stop/restart the Ollama systemd service
 │   ├── persistence.py               # Conversation logging, loading, archiving
-│   └── memory.py                     # Fact extraction, embeddings, similarity recall
+│   ├── memory.py                     # Fact extraction, embeddings, similarity recall
+│   ├── request_queue.py               # Shared serialized queue for GUI + Discord requests
+│   └── discord_bot.py                  # Discord bot: join/leave VC, mention replies, TTS in VC
 ├── scripts/
 │   └── backfill_embeddings.py     # One-off: embed any memory entries missing one
-├── sandbox/                # Early standalone test scripts, kept for reference
+├── sandbox/                # Early standalone test scripts, kept for reference (includes openWakeWord test)
 ├── sprite/                  # Placeholder for future avatar/sprite phase
 ├── logs/                     # Conversation logs + archives (gitignored)
+├── .env.example               # Template for DISCORD_BOT_TOKEN
 └── requirements.txt
 ```
 
