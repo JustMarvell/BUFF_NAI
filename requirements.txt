@@ -2,3 +2,5 @@ requests
 sounddevice
 scipy
 piper-tts
+discord[voice]
+python-dotenv
