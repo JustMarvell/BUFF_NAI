@@ -4,3 +4,5 @@ scipy
 piper-tts
 discord[voice]
 python-dotenv
+webrtcvad
+openwakeword
