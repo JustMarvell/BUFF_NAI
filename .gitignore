@@ -229,3 +229,7 @@ logs/*
 
 # wakeword wav file
 models/wakeword/*.wav
+
+# handsfree stuff
+handsfree_input.wav
+handsfree_input.wav.txt
