@@ -226,3 +226,6 @@ output.wav
 
 # Conversation history
 logs/*
+
+# wakeword wav file
+models/wakeword/*.wav
