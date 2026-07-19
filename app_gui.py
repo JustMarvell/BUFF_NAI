@@ -17,6 +17,7 @@ from modules import handsfree
 
 _handsfree_thread = None
 _handsfree_active = False
+_meter_after_id = None
 
 def on_handsfree_toggle():
     global _handsfree_thread, _handsfree_active
@@ -192,6 +193,7 @@ def draw_waveform(speaking):
 
 def update_meter():
     global _handsfree_active
+    global _meter_after_id
     hf_running = handsfree.is_running()
     active = is_active() or hf_running
     level = handsfree.get_level() if hf_running else (get_level() if is_active() else 0.0)
@@ -209,9 +211,11 @@ def update_meter():
     _wave_history.append(get_tts_level() if speaking else 0.0)
     draw_waveform(speaking)
 
-    root.after(50, update_meter)
+    _meter_after_id = root.after(50, update_meter)
 
 def on_close():
+    if _meter_after_id is not None:
+        root.after_cancel(_meter_after_id)
     archive_conversation()
     root.destroy()
 
@@ -343,7 +347,5 @@ root.protocol("WM_DELETE_WINDOW", on_close)
 start_worker()
 request_queue.start_worker()
 start_bot()
-update_meter()
-root.mainloop()
 update_meter()
 root.mainloop()
