@@ -16,14 +16,17 @@ import modules.theme as t
 from modules import handsfree
 
 _handsfree_thread = None
+_handsfree_active = False
 
 def on_handsfree_toggle():
-    global _handsfree_thread
-    if handsfree.is_running():
+    global _handsfree_thread, _handsfree_active
+    if _handsfree_active:
         handsfree.stop()
+        _handsfree_active = False
         handsfree_button.config(text="Hands-Free: Off", bg=t.BG_INPUT)
         talk_button.config(state="normal")
     else:
+        _handsfree_active = True
         handsfree_button.config(text="Hands-Free: On", bg=t.ACCENT_SOFT)
         talk_button.config(state="disabled")
         _handsfree_thread = threading.Thread(
@@ -188,12 +191,14 @@ def draw_waveform(speaking):
         wave_canvas.create_rectangle(x0, y0, x1, y0 + bar_h, fill=color, width=0, tags="bar")
 
 def update_meter():
+    global _handsfree_active
     hf_running = handsfree.is_running()
     active = is_active() or hf_running
     level = handsfree.get_level() if hf_running else (get_level() if is_active() else 0.0)
     draw_meter(level)
 
-    if not hf_running and handsfree_button.cget("text") == "Hands-Free: On":
+    if _handsfree_active and _handsfree_thread is not None and not _handsfree_thread.is_alive():
+        _handsfree_active = False
         handsfree_button.config(text="Hands-Free: Off", bg=t.BG_INPUT)
         talk_button.config(state="normal")
 
