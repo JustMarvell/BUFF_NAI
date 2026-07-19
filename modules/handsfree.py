@@ -21,6 +21,7 @@ NOISE_GATE_MULTIPLIER = 1.5     # speech must be this many x louder than ambient
                                 # further testing is required.
 CALIBRATION_SEC = 2.0
 INITIAL_SPEECH_TIMEOUT = 4.0  # give up if no speech at all within this long
+ECHO_GUARD_SEC = 1.0
 
 STATE_WAKE = "wake_listening"
 STATE_RECORD = "recording"
@@ -102,6 +103,9 @@ def run(on_status=None, on_conversation=None):
     print(f"[handsfree] noise_floor={noise_floor:.1f} gate_threshold={gate_threshold:.1f}")
     if on_status:
         on_status("Hands-free: listening for wake word")
+        
+    was_speaking = False
+    speech_ended_at = None
 
     try:
         while not _stop_flag.is_set():
@@ -109,7 +113,11 @@ def run(on_status=None, on_conversation=None):
                 chunk = _audio_q.get(timeout=0.5)
             except queue.Empty:
                 continue
-            if is_speaking():
+            speaking_now = is_speaking()
+            if speaking_now:
+                continue
+
+            if speech_ended_at is not None and time.time() - speech_ended_at < ECHO_GUARD_SEC:
                 continue
 
             if _state == STATE_WAKE:
@@ -204,6 +212,11 @@ def run(on_status=None, on_conversation=None):
                 request_queue.submit(text, "handsfree", on_sentence, on_done, on_error)
                 done_event.wait()
                 wait_until_done()
+
+                with _audio_q.mutex:
+                    _audio_q.queue.clear()
+                speech_ended_at = time.time()
+                was_speaking = False
 
                 _state, followup_start = STATE_FOLLOWUP, time.time()
                 if on_status:
