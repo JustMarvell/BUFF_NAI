@@ -20,3 +20,12 @@ CONVERSATION_LOG = os.path.join(LOG_DIR, "latest_conversation_log.json")
 MEMORY_LOG = os.path.join(LOG_DIR, "memory.json")
 
 DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN")
+
+WAKEWORD_MODELS = [
+    "models/wakeword/Hey_Nai/Hey_Nai.onnx",
+    "models/wakeword/Hey_Buff_nai/Hey_Buff_nai.onnx",
+    "models/wakeword/Hey_naaiy/Hey_naaiy.onnx",
+]
+VAD_AGGRESSIVENESS = 2
+SILENCE_TIMEOUT = 1.2
+FOLLOWUP_TIMEOUT = 8
