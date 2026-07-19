@@ -5,6 +5,7 @@ from scipy.signal import resample_poly
 import subprocess
 import threading
 from config import SAMPLE_RATE, WHISPER_BIN, WHISPER_MODEL
+from modules import mic_lock
 
 _frames = []
 _stream = None
@@ -42,6 +43,8 @@ def is_active():
 
 def start_recording():
     global _stream, _frames, _actual_rate
+    if not mic_lock.lock.acquire(blocking=False):
+        raise RuntimeError("Mic busy (hands-free mode active)")
     if _stream is not None:
         try:
             _stream.stop()
@@ -66,10 +69,12 @@ def stop_recording(filename="input.wav"):
     global _stream
     _stream_ready.wait(timeout=5)
     if _stream is None:
+        mic_lock.lock.release()
         return None
     _stream.stop()
     _stream.close()
     _stream = None
+    mic_lock.lock.release()
     if not _frames:
         return None
     audio = np.concatenate(_frames, axis=0)
