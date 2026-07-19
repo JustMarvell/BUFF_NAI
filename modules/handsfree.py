@@ -75,7 +75,7 @@ def _calibrate_noise_floor(stream_q, chunks_needed):
         levels.append(np.abs(chunk.astype(np.float32)).mean())
     return float(np.median(levels))
 
-def run(on_status=None):
+def run(on_status=None, on_conversation=None):
     """Blocking. Run in a background thread; call stop() to end."""
     global _state, _level
     if not mic_lock.lock.acquire(blocking=False):
@@ -170,17 +170,30 @@ def run(on_status=None):
                         on_status("Nothing heard, listening for wake word")
                     continue
 
-                append_entry("user", text, source="handsfree")
+                user_entry = append_entry("user", text, source="handsfree")
+                if on_conversation:
+                    on_conversation(f"[{user_entry['timestamp']}] You: {text}\n", "user")
                 if on_status:
                     on_status(f"You: {text}")
 
                 done_event = threading.Event()
+                ai_started = False
 
                 def on_sentence(s):
+                    nonlocal ai_started
+                    if on_conversation:
+                        if not ai_started:
+                            on_conversation(f"[{time.strftime('%H:%M:%S')}] NAI: ", "ai")
+                            ai_started = True
+                        else:
+                            on_conversation(" ", "ai")
+                        on_conversation(s, "ai")
                     queue_sentence(s)
 
                 def on_done(full_reply):
                     append_entry("ai", full_reply, source="handsfree")
+                    if on_conversation:
+                        on_conversation("\n\n", None)
                     done_event.set()
 
                 def on_error(e):

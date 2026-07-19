@@ -27,7 +27,9 @@ def on_handsfree_toggle():
         handsfree_button.config(text="Hands-Free: On", bg=t.ACCENT_SOFT)
         talk_button.config(state="disabled")
         _handsfree_thread = threading.Thread(
-            target=handsfree.run, kwargs={"on_status": set_status}, daemon=True
+            target=handsfree.run,
+            kwargs={"on_status": set_status, "on_conversation": append_conversation},
+            daemon=True
         )
         _handsfree_thread.start()
 
