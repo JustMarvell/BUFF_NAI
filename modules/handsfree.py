@@ -17,7 +17,8 @@ CHUNK = 1280        # 80ms @ 16kHz, required by openwakeword
 VAD_FRAME = 320      # 20ms @ 16kHz, required by webrtcvad
 WAKE_THRESHOLD = 0.5
 MIN_RECORD_CHUNKS = 10  # ~0.8s, avoid instant silence-stop
-NOISE_GATE_MULTIPLIER = 4.0  # speech must be this many x louder than ambient noise
+NOISE_GATE_MULTIPLIER = 1.5     # speech must be this many x louder than ambient noise || 1.5 for now is good, but it still picking up static sometimes
+                                # further testing is required.
 CALIBRATION_SEC = 2.0
 INITIAL_SPEECH_TIMEOUT = 4.0  # give up if no speech at all within this long
 
@@ -98,6 +99,7 @@ def run(on_status=None):
         on_status("Calibrating noise floor...")
     noise_floor = _calibrate_noise_floor(_audio_q, int(CALIBRATION_SEC * SAMPLE_RATE / CHUNK))
     gate_threshold = max(noise_floor * NOISE_GATE_MULTIPLIER, 50)
+    print(f"[handsfree] noise_floor={noise_floor:.1f} gate_threshold={gate_threshold:.1f}")
     if on_status:
         on_status("Hands-free: listening for wake word")
 
@@ -118,7 +120,6 @@ def run(on_status=None):
                     record_buf, silence_start = [], None
                     heard_speech = False
                     record_start = time.time()
-                    record_buf, silence_start = [], None
                     if on_status:
                         on_status(f"Wake word: {triggered}")
 
@@ -135,6 +136,8 @@ def run(on_status=None):
 
                 if _state == STATE_RECORD:
                     record_buf.append(chunk)
+                    amp = np.abs(chunk.astype(np.float32)).mean()
+                    print(f"[handsfree] amp={amp:.1f} gate={gate_threshold:.1f} speech={speech}")
                     if speech:
                         heard_speech = True
                         silence_start = None
