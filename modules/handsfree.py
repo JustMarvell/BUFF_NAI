@@ -4,13 +4,14 @@ import webrtcvad
 import queue
 import time
 import wave
+import threading
 from openwakeword.model import Model as WakeModel
 
 from config import SAMPLE_RATE, WAKEWORD_MODELS, VAD_AGGRESSIVENESS, SILENCE_TIMEOUT, FOLLOWUP_TIMEOUT
-from modules import mic_lock
+from modules import mic_lock, request_queue
 from modules.stt import transcribe
-from modules.llm import ask_stream
-from modules.tts import begin_session, queue_sentence, wait_until_done, is_speaking
+from modules.tts import queue_sentence, wait_until_done, is_speaking
+from modules.persistence import append_entry
 
 CHUNK = 1280        # 80ms @ 16kHz, required by openwakeword
 VAD_FRAME = 320      # 20ms @ 16kHz, required by webrtcvad
@@ -21,11 +22,30 @@ STATE_WAKE = "wake_listening"
 STATE_RECORD = "recording"
 STATE_PROCESS = "processing"
 STATE_FOLLOWUP = "followup"
+STATE_OFF = "off"
 
 _audio_q = queue.Queue()
+_stop_flag = threading.Event()
+_state = STATE_OFF
+_level = 0.0
+
+def get_state():
+    return _state
+
+def get_level():
+    return _level
+
+def is_running():
+    return _state != STATE_OFF
+
+def stop():
+    _stop_flag.set()
 
 def _callback(indata, frames, time_info, status):
-    _audio_q.put(indata[:, 0].copy())
+    global _level
+    chunk = indata[:, 0].copy()
+    _audio_q.put(chunk)
+    _level = min(np.abs(chunk).mean() / 4000, 1.0)
 
 def _has_speech(vad, chunk):
     for i in range(0, len(chunk) - VAD_FRAME + 1, VAD_FRAME):
@@ -42,47 +62,55 @@ def _save_wav(frames, filename="handsfree_input.wav"):
         wf.writeframes(audio.tobytes())
     return filename
 
-def run():
+def run(on_status=None):
+    """Blocking. Run in a background thread; call stop() to end."""
+    global _state, _level
     if not mic_lock.lock.acquire(blocking=False):
-        print("[handsfree] mic busy, aborting")
+        if on_status:
+            on_status("Mic busy, can't start hands-free.")
         return
 
+    _stop_flag.clear()
     wake_model = WakeModel(wakeword_models=WAKEWORD_MODELS, inference_framework="onnx")
     vad = webrtcvad.Vad(VAD_AGGRESSIVENESS)
 
-    state = STATE_WAKE
-    record_buf = []
-    silence_start = None
-    followup_start = None
+    _state = STATE_WAKE
+    record_buf, silence_start, followup_start = [], None, None
 
     stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                              blocksize=CHUNK, callback=_callback)
     stream.start()
-    print("[handsfree] listening for wake word... Ctrl+C to stop")
+    if on_status:
+        on_status("Hands-free: listening for wake word")
 
     try:
-        while True:
-            chunk = _audio_q.get()
+        while not _stop_flag.is_set():
+            try:
+                chunk = _audio_q.get(timeout=0.5)
+            except queue.Empty:
+                continue
             if is_speaking():
-                continue  # don't react to NAI's own voice
+                continue
 
-            if state == STATE_WAKE:
+            if _state == STATE_WAKE:
                 prediction = wake_model.predict(chunk)
                 if any(score > WAKE_THRESHOLD for score in prediction.values()):
                     triggered = max(prediction, key=prediction.get)
-                    print(f"[handsfree] wake word: {triggered}")
-                    state = STATE_RECORD
+                    _state = STATE_RECORD
                     record_buf, silence_start = [], None
+                    if on_status:
+                        on_status(f"Wake word: {triggered}")
 
-            elif state in (STATE_RECORD, STATE_FOLLOWUP):
+            elif _state in (STATE_RECORD, STATE_FOLLOWUP):
                 speech = _has_speech(vad, chunk)
 
-                if state == STATE_FOLLOWUP and speech:
-                    print("[handsfree] follow-up speech detected")
-                    state = STATE_RECORD
+                if _state == STATE_FOLLOWUP and speech:
+                    _state = STATE_RECORD
                     record_buf, silence_start, followup_start = [], None, None
+                    if on_status:
+                        on_status("Listening...")
 
-                if state == STATE_RECORD:
+                if _state == STATE_RECORD:
                     record_buf.append(chunk)
                     if speech:
                         silence_start = None
@@ -90,43 +118,62 @@ def run():
                         silence_start = time.time()
                     elif (time.time() - silence_start > SILENCE_TIMEOUT
                           and len(record_buf) > MIN_RECORD_CHUNKS):
-                        state = STATE_PROCESS
+                        _state = STATE_PROCESS
 
-                elif state == STATE_FOLLOWUP:
+                elif _state == STATE_FOLLOWUP:
                     if followup_start is None:
                         followup_start = time.time()
                     elif time.time() - followup_start > FOLLOWUP_TIMEOUT:
-                        print("[handsfree] follow-up window closed")
-                        state, followup_start = STATE_WAKE, None
+                        _state, followup_start = STATE_WAKE, None
+                        if on_status:
+                            on_status("Hands-free: listening for wake word")
 
-            if state == STATE_PROCESS:
+            if _state == STATE_PROCESS:
                 filename = _save_wav(record_buf)
                 text = transcribe(filename)
                 record_buf = []
                 if not text:
-                    print("[handsfree] nothing transcribed")
-                    state = STATE_WAKE
+                    _state = STATE_WAKE
+                    if on_status:
+                        on_status("Nothing heard, listening for wake word")
                     continue
 
-                print(f"[handsfree] you said: {text}")
-                begin_session()
-                try:
-                    reply = ask_stream(text, queue_sentence)
-                    print(f"[handsfree] NAI: {reply}")
-                except ConnectionError as e:
-                    print(f"[handsfree] {e}")
+                append_entry("user", text, source="handsfree")
+                if on_status:
+                    on_status(f"You: {text}")
+
+                done_event = threading.Event()
+
+                def on_sentence(s):
+                    queue_sentence(s)
+
+                def on_done(full_reply):
+                    append_entry("ai", full_reply, source="handsfree")
+                    done_event.set()
+
+                def on_error(e):
+                    if on_status:
+                        on_status(f"Error: {e}")
+                    done_event.set()
+
+                request_queue.submit(text, "handsfree", on_sentence, on_done, on_error)
+                done_event.wait()
                 wait_until_done()
 
-                state, followup_start = STATE_FOLLOWUP, time.time()
+                _state, followup_start = STATE_FOLLOWUP, time.time()
+                if on_status:
+                    on_status("Follow-up window...")
 
-    except KeyboardInterrupt:
-        print("\n[handsfree] stopping")
     finally:
         stream.stop()
         stream.close()
         mic_lock.lock.release()
+        _state = STATE_OFF
+        if on_status:
+            on_status("Hands-free stopped")
 
 if __name__ == "__main__":
     from modules.tts import start_worker
     start_worker()
-    run()
+    request_queue.start_worker()
+    run(on_status=print)
