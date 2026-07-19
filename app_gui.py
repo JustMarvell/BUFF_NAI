@@ -13,7 +13,23 @@ from modules.tts import (start_worker, begin_session, queue_sentence, wait_until
 from modules.ollama_ctl import start_ollama, stop_ollama, restart_ollama
 from modules.persistence import load_conversation, append_entry, clear_conversation, archive_conversation
 import modules.theme as t
+from modules import handsfree
 
+_handsfree_thread = None
+
+def on_handsfree_toggle():
+    global _handsfree_thread
+    if handsfree.is_running():
+        handsfree.stop()
+        handsfree_button.config(text="Hands-Free: Off", bg=t.BG_INPUT)
+        talk_button.config(state="normal")
+    else:
+        handsfree_button.config(text="Hands-Free: On", bg=t.ACCENT_SOFT)
+        talk_button.config(state="disabled")
+        _handsfree_thread = threading.Thread(
+            target=handsfree.run, kwargs={"on_status": set_status}, daemon=True
+        )
+        _handsfree_thread.start()
 
 def on_press(event):
     set_button(bg=t.STATE_RECORDING, text="Recording...")
@@ -170,10 +186,17 @@ def draw_waveform(speaking):
         wave_canvas.create_rectangle(x0, y0, x1, y0 + bar_h, fill=color, width=0, tags="bar")
 
 def update_meter():
-    active = is_active()
-    draw_meter(get_level() if active else 0.0)
+    hf_running = handsfree.is_running()
+    active = is_active() or hf_running
+    level = handsfree.get_level() if hf_running else (get_level() if is_active() else 0.0)
+    draw_meter(level)
+
+    if not hf_running and handsfree_button.cget("text") == "Hands-Free: On":
+        handsfree_button.config(text="Hands-Free: Off", bg=t.BG_INPUT)
+        talk_button.config(state="normal")
+
     idx, name = get_device()
-    mic_status_label.config(text=f"Mic  ·  {name}  ·  {'listening' if active else 'idle'}")
+    mic_status_label.config(text=f"Mic · {name} · {handsfree.get_state() if hf_running else ('listening' if active else 'idle')}")
 
     speaking = is_speaking()
     _wave_history.append(get_tts_level() if speaking else 0.0)
@@ -265,6 +288,10 @@ make_pill_button(controls_frame, "New Conversation", on_new_conversation, bg=t.B
 status_label = tk.Label(root, text="Hold the button to talk", wraplength=320, font=t.FONT_SMALL,
                          bg=t.BG_MAIN, fg=t.TEXT_MUTED, justify="center")
 status_label.pack(pady=(6, 0))
+
+handsfree_button = make_pill_button(controls_frame, "Hands-Free: Off", on_handsfree_toggle,
+                                     bg=t.BG_INPUT, font=t.FONT_BODY)
+handsfree_button.pack(side="left", padx=4)
 
 conversation_frame = tk.Frame(root, bg=t.BG_PANEL, highlightbackground=t.BG_INPUT, highlightthickness=1)
 conversation_frame.pack(pady=10, padx=16, fill="both", expand=True)
