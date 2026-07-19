@@ -16,9 +16,10 @@ from modules.persistence import append_entry
 CHUNK = 1280        # 80ms @ 16kHz, required by openwakeword
 VAD_FRAME = 320      # 20ms @ 16kHz, required by webrtcvad
 WAKE_THRESHOLD = 0.5
-MIN_RECORD_CHUNKS = 5  # ~0.4s, avoid instant silence-stop
-NOISE_GATE_MULTIPLIER = 3.0  # speech must be this many x louder than ambient noise
-CALIBRATION_SEC = 1.0
+MIN_RECORD_CHUNKS = 10  # ~0.8s, avoid instant silence-stop
+NOISE_GATE_MULTIPLIER = 4.0  # speech must be this many x louder than ambient noise
+CALIBRATION_SEC = 2.0
+INITIAL_SPEECH_TIMEOUT = 4.0  # give up if no speech at all within this long
 
 STATE_WAKE = "wake_listening"
 STATE_RECORD = "recording"
@@ -87,6 +88,8 @@ def run(on_status=None):
 
     _state = STATE_WAKE
     record_buf, silence_start, followup_start = [], None, None
+    heard_speech = False
+    record_start = None
 
     stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                              blocksize=CHUNK, callback=_callback)
@@ -113,6 +116,9 @@ def run(on_status=None):
                     triggered = max(prediction, key=prediction.get)
                     _state = STATE_RECORD
                     record_buf, silence_start = [], None
+                    heard_speech = False
+                    record_start = time.time()
+                    record_buf, silence_start = [], None
                     if on_status:
                         on_status(f"Wake word: {triggered}")
 
@@ -122,18 +128,26 @@ def run(on_status=None):
                 if _state == STATE_FOLLOWUP and speech:
                     _state = STATE_RECORD
                     record_buf, silence_start, followup_start = [], None, None
+                    heard_speech = False
+                    record_start = time.time()
                     if on_status:
                         on_status("Listening...")
 
                 if _state == STATE_RECORD:
                     record_buf.append(chunk)
                     if speech:
+                        heard_speech = True
                         silence_start = None
-                    elif silence_start is None:
+                    elif heard_speech and silence_start is None:
                         silence_start = time.time()
-                    elif (time.time() - silence_start > SILENCE_TIMEOUT
-                          and len(record_buf) > MIN_RECORD_CHUNKS):
+                    elif heard_speech and time.time() - silence_start > SILENCE_TIMEOUT:
                         _state = STATE_PROCESS
+                    elif not heard_speech and time.time() - record_start > INITIAL_SPEECH_TIMEOUT:
+                        # gave up, nothing was said
+                        _state = STATE_WAKE
+                        record_buf = []
+                        if on_status:
+                            on_status("No speech heard, listening for wake word")
 
                 elif _state == STATE_FOLLOWUP:
                     if followup_start is None:
