@@ -17,6 +17,8 @@ CHUNK = 1280        # 80ms @ 16kHz, required by openwakeword
 VAD_FRAME = 320      # 20ms @ 16kHz, required by webrtcvad
 WAKE_THRESHOLD = 0.5
 MIN_RECORD_CHUNKS = 5  # ~0.4s, avoid instant silence-stop
+NOISE_GATE_MULTIPLIER = 3.0  # speech must be this many x louder than ambient noise
+CALIBRATION_SEC = 1.0
 
 STATE_WAKE = "wake_listening"
 STATE_RECORD = "recording"
@@ -47,7 +49,9 @@ def _callback(indata, frames, time_info, status):
     _audio_q.put(chunk)
     _level = min(np.abs(chunk).mean() / 4000, 1.0)
 
-def _has_speech(vad, chunk):
+def _has_speech(vad, chunk, gate_threshold):
+    if np.abs(chunk.astype(np.float32)).mean() < gate_threshold:
+        return False
     for i in range(0, len(chunk) - VAD_FRAME + 1, VAD_FRAME):
         if vad.is_speech(chunk[i:i + VAD_FRAME].tobytes(), SAMPLE_RATE):
             return True
@@ -61,6 +65,13 @@ def _save_wav(frames, filename="handsfree_input.wav"):
         wf.setframerate(SAMPLE_RATE)
         wf.writeframes(audio.tobytes())
     return filename
+
+def _calibrate_noise_floor(stream_q, chunks_needed):
+    levels = []
+    while len(levels) < chunks_needed:
+        chunk = stream_q.get()
+        levels.append(np.abs(chunk.astype(np.float32)).mean())
+    return float(np.median(levels))
 
 def run(on_status=None):
     """Blocking. Run in a background thread; call stop() to end."""
@@ -80,6 +91,10 @@ def run(on_status=None):
     stream = sd.InputStream(samplerate=SAMPLE_RATE, channels=1, dtype="int16",
                              blocksize=CHUNK, callback=_callback)
     stream.start()
+    if on_status:
+        on_status("Calibrating noise floor...")
+    noise_floor = _calibrate_noise_floor(_audio_q, int(CALIBRATION_SEC * SAMPLE_RATE / CHUNK))
+    gate_threshold = max(noise_floor * NOISE_GATE_MULTIPLIER, 50)
     if on_status:
         on_status("Hands-free: listening for wake word")
 
@@ -102,7 +117,7 @@ def run(on_status=None):
                         on_status(f"Wake word: {triggered}")
 
             elif _state in (STATE_RECORD, STATE_FOLLOWUP):
-                speech = _has_speech(vad, chunk)
+                speech = _has_speech(vad, chunk, gate_threshold)
 
                 if _state == STATE_FOLLOWUP and speech:
                     _state = STATE_RECORD
